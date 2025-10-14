@@ -14,6 +14,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Data CDR Processor for processing data session records
@@ -24,13 +25,19 @@ public class DataCDRProcessor implements Runnable {
     private SystemConfig systemConfig;
     private List<String> configuredAccounts;
     private double reductionPercentage;
+    private Map<String, String> specialAccountTypes;
+    private Map<String, Integer> accountTypePositions;
+    private Map<String, Integer> fieldPositions;
     private static final Logger log = LoggerFactory.getLogger(DataCDRProcessor.class);
     
     public DataCDRProcessor(File inputFile, SystemConfig systemConfig) {
         this.inputFile = inputFile;
         this.systemConfig = systemConfig;
         this.configuredAccounts = ConfigUtils.getDataAccounts();
-        this.reductionPercentage = ConfigUtils.getReductionPercentage();
+        this.reductionPercentage = ConfigUtils.getDataReductionPercentage();
+        this.specialAccountTypes = ConfigUtils.getDataSpecialAccountTypes();
+        this.accountTypePositions = ConfigUtils.getDataAccountTypePositions();
+        this.fieldPositions = ConfigUtils.getDataFieldPositions();
     }
     
     @Override
@@ -88,9 +95,16 @@ public class DataCDRProcessor implements Runnable {
             record.setSessionId(fields[0]);
             record.setImsi(fields[1]);
             record.setMsisdn(fields[2]);
-            record.setTotalFlux(Double.parseDouble(fields[3]));
-            record.setUpFlux(Double.parseDouble(fields[4]));
-            record.setDownFlux(Double.parseDouble(fields[5]));
+            // Use field positions from configuration
+            int totalFluxPos = fieldPositions.get("totalFlux");
+            int upFluxPos = fieldPositions.get("upFlux");
+            int downFluxPos = fieldPositions.get("downFlux");
+            int totalChargeFluxPos = fieldPositions.get("totalChargeFlux");
+            
+            record.setTotalFlux(Double.parseDouble(fields[totalFluxPos]));
+            record.setUpFlux(Double.parseDouble(fields[upFluxPos]));
+            record.setDownFlux(Double.parseDouble(fields[downFluxPos]));
+            record.setTotalChargeFlux(Double.parseDouble(fields[totalChargeFluxPos]));
             record.setSessionDuration(Long.parseLong(fields[6]));
             record.setApn(fields[7]);
             record.setStartTime(fields[8]);
@@ -120,18 +134,48 @@ public class DataCDRProcessor implements Runnable {
     }
     
     private void applyReduction(DataCDR record) {
+        // Check for special account types first
+        for (int i = 1; i <= 5; i++) {
+            String accountType = record.getAccountType(i);
+            if (accountType != null && specialAccountTypes.containsKey(accountType)) {
+                double discountRate = Double.parseDouble(specialAccountTypes.get(accountType));
+                double multiplier = (100 - discountRate) / 100.0;
+                
+                record.setTotalFlux(record.getTotalFlux() * multiplier);
+                record.setUpFlux(record.getUpFlux() * multiplier);
+                record.setDownFlux(record.getDownFlux() * multiplier);
+                record.setTotalChargeFlux(record.getTotalChargeFlux() * multiplier);
+                
+                log.debug("Applied special discount {}% to data CDR record: {}", discountRate, record.getSessionId());
+                return;
+            }
+        }
+        
+        // Apply standard reduction
         double multiplier = (100 - reductionPercentage) / 100.0;
         
         record.setTotalFlux(record.getTotalFlux() * multiplier);
         record.setUpFlux(record.getUpFlux() * multiplier);
         record.setDownFlux(record.getDownFlux() * multiplier);
+        record.setTotalChargeFlux(record.getTotalChargeFlux() * multiplier);
         
         log.debug("Applied {}% reduction to data CDR record: {}", reductionPercentage, record.getSessionId());
     }
     
     private void writeProcessedFile(List<DataCDR> records) throws IOException {
-        File outputFile = new File(systemConfig.getOutputFolder(), inputFile.getName());
-        FileUtils.createDirectoryIfNotExists(systemConfig.getOutputFolder());
+        // Preserve subfolder structure
+        String relativePath = FileUtils.getRelativePath(inputFile, systemConfig.getDataInputFolder());
+        String subfolderPath = new File(relativePath).getParent();
+        
+        String outputFolder = systemConfig.getDataOutputFolder();
+        if (subfolderPath != null && !subfolderPath.isEmpty()) {
+            FileUtils.createDirectoryStructure(outputFolder, subfolderPath);
+            outputFolder = new File(outputFolder, subfolderPath).getAbsolutePath();
+        } else {
+            FileUtils.createDirectoryIfNotExists(outputFolder);
+        }
+        
+        File outputFile = new File(outputFolder, inputFile.getName());
         
         try (PrintWriter writer = new PrintWriter(new FileWriter(outputFile))) {
             for (DataCDR record : records) {
@@ -143,13 +187,14 @@ public class DataCDRProcessor implements Runnable {
     }
     
     private String formatDataRecord(DataCDR record) {
-        return String.format("%s|%s|%s|%.2f|%.2f|%.2f|%d|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s",
+        return String.format("%s|%s|%s|%.2f|%.2f|%.2f|%.2f|%d|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s",
                 record.getSessionId(),
                 record.getImsi(),
                 record.getMsisdn(),
                 record.getTotalFlux(),
                 record.getUpFlux(),
                 record.getDownFlux(),
+                record.getTotalChargeFlux(),
                 record.getSessionDuration(),
                 record.getApn(),
                 record.getStartTime(),
@@ -167,12 +212,34 @@ public class DataCDRProcessor implements Runnable {
     }
     
     private void backupOriginalFile() {
-        FileUtils.backupFile(inputFile, systemConfig.getBackupFolder());
+        // Preserve subfolder structure for backup
+        String relativePath = FileUtils.getRelativePath(inputFile, systemConfig.getDataInputFolder());
+        String subfolderPath = new File(relativePath).getParent();
+        
+        String backupFolder = systemConfig.getDataBackupFolder();
+        if (subfolderPath != null && !subfolderPath.isEmpty()) {
+            FileUtils.createDirectoryStructure(backupFolder, subfolderPath);
+            backupFolder = new File(backupFolder, subfolderPath).getAbsolutePath();
+        } else {
+            FileUtils.createDirectoryIfNotExists(backupFolder);
+        }
+        
+        FileUtils.backupFile(inputFile, backupFolder);
     }
     
     private void moveToErrorFolder(Exception e) {
         try {
-            FileUtils.createDirectoryIfNotExists(systemConfig.getErrorFolder());
+            // Preserve subfolder structure for error folder
+            String relativePath = FileUtils.getRelativePath(inputFile, systemConfig.getDataInputFolder());
+            String subfolderPath = new File(relativePath).getParent();
+            
+            String errorFolder = systemConfig.getDataErrorFolder();
+            if (subfolderPath != null && !subfolderPath.isEmpty()) {
+                FileUtils.createDirectoryStructure(errorFolder, subfolderPath);
+                errorFolder = new File(errorFolder, subfolderPath).getAbsolutePath();
+            } else {
+                FileUtils.createDirectoryIfNotExists(errorFolder);
+            }
             
             String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
             String errorFileName = String.format("%s_%s_DATA_ERROR_%s", 
@@ -180,7 +247,7 @@ public class DataCDRProcessor implements Runnable {
                 timestamp,
                 e.getClass().getSimpleName());
             
-            File errorFile = new File(systemConfig.getErrorFolder(), errorFileName + FileUtils.getExtension(inputFile.getName()));
+            File errorFile = new File(errorFolder, errorFileName + FileUtils.getExtension(inputFile.getName()));
             Files.move(inputFile.toPath(), errorFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
             
             log.error("Moved failed data CDR file {} to error folder: {}", 
@@ -196,7 +263,7 @@ public class DataCDRProcessor implements Runnable {
     
     private void logDetailedError(File originalFile, File errorFile, Exception e) {
         try {
-            File errorLogFile = new File(systemConfig.getErrorFolder(), "data_error_log.txt");
+            File errorLogFile = new File(systemConfig.getDataErrorFolder(), "data_error_log.txt");
             try (PrintWriter writer = new PrintWriter(new FileWriter(errorLogFile, true))) {
                 writer.println(String.format("[%s] DATA CDR PROCESSING ERROR", 
                     new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date())));

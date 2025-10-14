@@ -22,46 +22,86 @@ import java.util.concurrent.TimeUnit;
  */
 public class MasterController {
     
-    private String inputFolder;
+    private String voiceInputFolder;
+    private String dataInputFolder;
+    private String pcrfInputFolder;
     private int voiceSlaves;
     private int dataSlaves;
+    private int pcrfSlaves;
     private ExecutorService voiceExecutor;
     private ExecutorService dataExecutor;
+    private ExecutorService pcrfExecutor;
     private SystemConfig systemConfig;
     private static final Logger log = LoggerFactory.getLogger(MasterController.class);
     
     public MasterController(SystemConfig config) {
         this.systemConfig = config;
-        this.inputFolder = config.getInputFolder();
+        this.voiceInputFolder = config.getVoiceInputFolder();
+        this.dataInputFolder = config.getDataInputFolder();
+        this.pcrfInputFolder = config.getPcrfInputFolder();
         this.voiceSlaves = config.getVoiceSlaves();
         this.dataSlaves = config.getDataSlaves();
+        this.pcrfSlaves = config.getPcrfSlaves();
         initialize();
     }
     
     public void initialize() {
         voiceExecutor = Executors.newFixedThreadPool(voiceSlaves);
         dataExecutor = Executors.newFixedThreadPool(dataSlaves);
-        log.info("Master Controller initialized with {} voice slaves and {} data slaves", 
-                voiceSlaves, dataSlaves);
+        pcrfExecutor = Executors.newFixedThreadPool(pcrfSlaves);
+        log.info("Master Controller initialized with {} voice slaves, {} data slaves, and {} PCRF slaves", 
+                voiceSlaves, dataSlaves, pcrfSlaves);
     }
     
     public void processFiles() {
-        List<File> files = FileUtils.scanInputFolder(inputFolder);
-        log.info("Found {} files to process", files.size());
+        // Process Voice CDR files
+        processVoiceFiles();
+        
+        // Process Data CDR files
+        processDataFiles();
+        
+        // Process PCRF CDR files
+        processPcrfFiles();
+    }
+    
+    private void processVoiceFiles() {
+        List<File> files = FileUtils.scanInputFolder(voiceInputFolder);
+        log.info("Found {} voice CDR files to process", files.size());
         
         for (File file : files) {
             try {
-                if (FileUtils.isVoiceCDR(file)) {
-                    voiceExecutor.submit(new VoiceCDRProcessor(file, systemConfig));
-                } else if (FileUtils.isDataCDR(file)) {
-                    dataExecutor.submit(new DataCDRProcessor(file, systemConfig));
-                } else {
-                    log.warn("Unknown file type: {}", file.getName());
-                    moveToErrorFolder(file, "UNKNOWN_FILE_TYPE");
-                }
+                voiceExecutor.submit(new VoiceCDRProcessor(file, systemConfig));
             } catch (Exception e) {
-                log.error("Error processing file: {}", file.getName(), e);
-                moveToErrorFolder(file, "PROCESSING_ERROR: " + e.getMessage());
+                log.error("Error processing voice file: {}", file.getName(), e);
+                moveToErrorFolder(file, "VOICE_PROCESSING_ERROR: " + e.getMessage());
+            }
+        }
+    }
+    
+    private void processDataFiles() {
+        List<File> files = FileUtils.scanInputFolder(dataInputFolder);
+        log.info("Found {} data CDR files to process", files.size());
+        
+        for (File file : files) {
+            try {
+                dataExecutor.submit(new DataCDRProcessor(file, systemConfig));
+            } catch (Exception e) {
+                log.error("Error processing data file: {}", file.getName(), e);
+                moveToErrorFolder(file, "DATA_PROCESSING_ERROR: " + e.getMessage());
+            }
+        }
+    }
+    
+    private void processPcrfFiles() {
+        List<File> files = FileUtils.scanInputFolder(pcrfInputFolder);
+        log.info("Found {} PCRF CDR files to process", files.size());
+        
+        for (File file : files) {
+            try {
+                pcrfExecutor.submit(new PcrfCDRProcessor(file, systemConfig));
+            } catch (Exception e) {
+                log.error("Error processing PCRF file: {}", file.getName(), e);
+                moveToErrorFolder(file, "PCRF_PROCESSING_ERROR: " + e.getMessage());
             }
         }
     }
@@ -109,6 +149,7 @@ public class MasterController {
         log.info("Shutting down Master Controller...");
         voiceExecutor.shutdown();
         dataExecutor.shutdown();
+        pcrfExecutor.shutdown();
         try {
             if (!voiceExecutor.awaitTermination(60, TimeUnit.SECONDS)) {
                 voiceExecutor.shutdownNow();
@@ -116,8 +157,15 @@ public class MasterController {
             if (!dataExecutor.awaitTermination(60, TimeUnit.SECONDS)) {
                 dataExecutor.shutdownNow();
             }
+            if (!pcrfExecutor.awaitTermination(60, TimeUnit.SECONDS)) {
+                pcrfExecutor.shutdownNow();
+            }
         } catch (InterruptedException e) {
+            voiceExecutor.shutdownNow();
+            dataExecutor.shutdownNow();
+            pcrfExecutor.shutdownNow();
             Thread.currentThread().interrupt();
         }
+        log.info("Master Controller shutdown completed");
     }
 }

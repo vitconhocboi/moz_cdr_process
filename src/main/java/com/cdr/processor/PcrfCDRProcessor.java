@@ -1,7 +1,7 @@
 package com.cdr.processor;
 
 import com.cdr.model.SystemConfig;
-import com.cdr.model.VoiceCDR;
+import com.cdr.model.DataCDR;
 import com.cdr.util.ConfigUtils;
 import com.cdr.util.FileUtils;
 import org.slf4j.Logger;
@@ -17,55 +17,59 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Voice CDR Processor for processing voice call records
+ * PCRF CDR Processor for processing PCRF session records
  */
-public class VoiceCDRProcessor implements Runnable {
+public class PcrfCDRProcessor implements Runnable {
     
     private File inputFile;
     private SystemConfig systemConfig;
     private List<String> configuredAccounts;
+    private double reductionPercentage;
     private Map<String, String> specialAccountTypes;
     private Map<String, Integer> accountTypePositions;
-    private static final Logger log = LoggerFactory.getLogger(VoiceCDRProcessor.class);
+    private Map<String, Integer> fieldPositions;
+    private static final Logger log = LoggerFactory.getLogger(PcrfCDRProcessor.class);
     
-    public VoiceCDRProcessor(File inputFile, SystemConfig systemConfig) {
+    public PcrfCDRProcessor(File inputFile, SystemConfig systemConfig) {
         this.inputFile = inputFile;
         this.systemConfig = systemConfig;
-        this.configuredAccounts = ConfigUtils.getVoiceAccounts();
-        this.specialAccountTypes = ConfigUtils.getSpecialAccountTypes();
-        this.accountTypePositions = ConfigUtils.getAccountTypePositions();
+        this.configuredAccounts = ConfigUtils.getPcrfAccounts();
+        this.reductionPercentage = ConfigUtils.getPcrfReductionPercentage();
+        this.specialAccountTypes = ConfigUtils.getPcrfSpecialAccountTypes();
+        this.accountTypePositions = ConfigUtils.getPcrfAccountTypePositions();
+        this.fieldPositions = ConfigUtils.getPcrfFieldPositions();
     }
     
     @Override
     public void run() {
         try {
-            log.info("Processing voice CDR file: {}", inputFile.getName());
-            List<VoiceCDR> records = parseVoiceCDR(inputFile);
+            log.info("Processing PCRF CDR file: {}", inputFile.getName());
+            List<DataCDR> records = parsePcrfCDR(inputFile);
             
-            for (VoiceCDR record : records) {
+            for (DataCDR record : records) {
                 if (shouldProcessRecord(record)) {
-                    record.setChargeAmount(0.0);
+                    applyReduction(record);
                 }
             }
             
             writeProcessedFile(records);
             backupOriginalFile();
-            log.info("Successfully processed voice CDR file: {}", inputFile.getName());
+            log.info("Successfully processed PCRF CDR file: {}", inputFile.getName());
             
         } catch (Exception e) {
-            log.error("Error processing voice CDR file: " + inputFile.getName(), e);
+            log.error("Error processing PCRF CDR file: " + inputFile.getName(), e);
             moveToErrorFolder(e);
         }
     }
     
-    private List<VoiceCDR> parseVoiceCDR(File file) throws IOException {
-        List<VoiceCDR> records = new ArrayList<>();
+    private List<DataCDR> parsePcrfCDR(File file) throws IOException {
+        List<DataCDR> records = new ArrayList<>();
         
         try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 if (!line.trim().isEmpty()) {
-                    VoiceCDR record = parseVoiceRecord(line);
+                    DataCDR record = parsePcrfRecord(line);
                     if (record != null) {
                         records.add(record);
                     }
@@ -73,45 +77,47 @@ public class VoiceCDRProcessor implements Runnable {
             }
         }
         
-        log.info("Parsed {} voice CDR records from file: {}", records.size(), file.getName());
+        log.info("Parsed {} PCRF CDR records from file: {}", records.size(), file.getName());
         return records;
     }
     
-    private VoiceCDR parseVoiceRecord(String line) {
+    private DataCDR parsePcrfRecord(String line) {
         try {
-            // Assuming pipe-delimited format: callId|callingNumber|calledNumber|chargeAmount|duration|callType|startTime|endTime|accountType1|...|accountType10
+            // Assuming pipe-delimited format: sessionId|imsi|msisdn|totalFlux|upFlux|downFlux|duration|apn|startTime|endTime|accountType1|...|accountType5
             String[] fields = line.split("\\|");
             
-            if (fields.length < 8) {
-                log.warn("Invalid voice CDR record format: {}", line);
+            if (fields.length < 10) {
+                log.warn("Invalid PCRF CDR record format: {}", line);
                 return null;
             }
             
-            VoiceCDR record = new VoiceCDR();
-            record.setCallId(fields[0]);
-            record.setCallingNumber(fields[1]);
-            record.setCalledNumber(fields[2]);
-            record.setChargeAmount(Double.parseDouble(fields[3]));
-            record.setCallDuration(Long.parseLong(fields[4]));
-            record.setCallType(fields[5]);
-            record.setStartTime(fields[6]);
-            record.setEndTime(fields[7]);
+            DataCDR record = new DataCDR();
+            record.setSessionId(fields[0]);
+            record.setImsi(fields[1]);
+            record.setMsisdn(fields[2]);
+            record.setTotalFlux(Double.parseDouble(fields[3]));
+            record.setUpFlux(Double.parseDouble(fields[4]));
+            record.setDownFlux(Double.parseDouble(fields[5]));
+            record.setSessionDuration(Long.parseLong(fields[6]));
+            record.setApn(fields[7]);
+            record.setStartTime(fields[8]);
+            record.setEndTime(fields[9]);
             
-            // Parse account types (fields 8-17)
-            for (int i = 8; i < fields.length && i < 18; i++) {
-                record.setAccountType(i - 7, fields[i]);
+            // Parse account types (fields 10-14 for PCRF)
+            for (int i = 10; i < fields.length && i < 15; i++) {
+                record.setAccountType(i - 9, fields[i]);
             }
             
             return record;
             
         } catch (Exception e) {
-            log.warn("Failed to parse voice CDR record: {}", line, e);
+            log.warn("Failed to parse PCRF CDR record: {}", line, e);
             return null;
         }
     }
     
-    private boolean shouldProcessRecord(VoiceCDR record) {
-        for (int i = 1; i <= 10; i++) {
+    private boolean shouldProcessRecord(DataCDR record) {
+        for (int i = 1; i <= 5; i++) {
             String accountType = record.getAccountType(i);
             if (accountType != null && configuredAccounts.contains(accountType)) {
                 return true;
@@ -120,12 +126,39 @@ public class VoiceCDRProcessor implements Runnable {
         return false;
     }
     
-    private void writeProcessedFile(List<VoiceCDR> records) throws IOException {
+    private void applyReduction(DataCDR record) {
+        // Check for special account types first
+        for (int i = 1; i <= 5; i++) {
+            String accountType = record.getAccountType(i);
+            if (accountType != null && specialAccountTypes.containsKey(accountType)) {
+                double discountRate = Double.parseDouble(specialAccountTypes.get(accountType));
+                double multiplier = (100 - discountRate) / 100.0;
+                
+                record.setTotalFlux(record.getTotalFlux() * multiplier);
+                record.setUpFlux(record.getUpFlux() * multiplier);
+                record.setDownFlux(record.getDownFlux() * multiplier);
+                
+                log.debug("Applied special discount {}% to PCRF CDR record: {}", discountRate, record.getSessionId());
+                return;
+            }
+        }
+        
+        // Apply standard reduction
+        double multiplier = (100 - reductionPercentage) / 100.0;
+        
+        record.setTotalFlux(record.getTotalFlux() * multiplier);
+        record.setUpFlux(record.getUpFlux() * multiplier);
+        record.setDownFlux(record.getDownFlux() * multiplier);
+        
+        log.debug("Applied {}% reduction to PCRF CDR record: {}", reductionPercentage, record.getSessionId());
+    }
+    
+    private void writeProcessedFile(List<DataCDR> records) throws IOException {
         // Preserve subfolder structure
-        String relativePath = FileUtils.getRelativePath(inputFile, systemConfig.getVoiceInputFolder());
+        String relativePath = FileUtils.getRelativePath(inputFile, systemConfig.getPcrfInputFolder());
         String subfolderPath = new File(relativePath).getParent();
         
-        String outputFolder = systemConfig.getVoiceOutputFolder();
+        String outputFolder = systemConfig.getPcrfOutputFolder();
         if (subfolderPath != null && !subfolderPath.isEmpty()) {
             FileUtils.createDirectoryStructure(outputFolder, subfolderPath);
             outputFolder = new File(outputFolder, subfolderPath).getAbsolutePath();
@@ -136,42 +169,39 @@ public class VoiceCDRProcessor implements Runnable {
         File outputFile = new File(outputFolder, inputFile.getName());
         
         try (PrintWriter writer = new PrintWriter(new FileWriter(outputFile))) {
-            for (VoiceCDR record : records) {
-                writer.println(formatVoiceRecord(record));
+            for (DataCDR record : records) {
+                writer.println(formatPcrfRecord(record));
             }
         }
         
-        log.info("Written {} processed voice CDR records to: {}", records.size(), outputFile.getAbsolutePath());
+        log.info("Written {} processed PCRF CDR records to: {}", records.size(), outputFile.getAbsolutePath());
     }
     
-    private String formatVoiceRecord(VoiceCDR record) {
-        return String.format("%s|%s|%s|%.2f|%d|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s",
-                record.getCallId(),
-                record.getCallingNumber(),
-                record.getCalledNumber(),
-                record.getChargeAmount(),
-                record.getCallDuration(),
-                record.getCallType(),
+    private String formatPcrfRecord(DataCDR record) {
+        return String.format("%s|%s|%s|%.2f|%.2f|%.2f|%d|%s|%s|%s|%s|%s|%s|%s|%s",
+                record.getSessionId(),
+                record.getImsi(),
+                record.getMsisdn(),
+                record.getTotalFlux(),
+                record.getUpFlux(),
+                record.getDownFlux(),
+                record.getSessionDuration(),
+                record.getApn(),
                 record.getStartTime(),
                 record.getEndTime(),
                 record.getAccountType1(),
                 record.getAccountType2(),
                 record.getAccountType3(),
                 record.getAccountType4(),
-                record.getAccountType5(),
-                record.getAccountType6(),
-                record.getAccountType7(),
-                record.getAccountType8(),
-                record.getAccountType9(),
-                record.getAccountType10());
+                record.getAccountType5());
     }
     
     private void backupOriginalFile() {
         // Preserve subfolder structure for backup
-        String relativePath = FileUtils.getRelativePath(inputFile, systemConfig.getVoiceInputFolder());
+        String relativePath = FileUtils.getRelativePath(inputFile, systemConfig.getPcrfInputFolder());
         String subfolderPath = new File(relativePath).getParent();
         
-        String backupFolder = systemConfig.getVoiceBackupFolder();
+        String backupFolder = systemConfig.getPcrfBackupFolder();
         if (subfolderPath != null && !subfolderPath.isEmpty()) {
             FileUtils.createDirectoryStructure(backupFolder, subfolderPath);
             backupFolder = new File(backupFolder, subfolderPath).getAbsolutePath();
@@ -185,10 +215,10 @@ public class VoiceCDRProcessor implements Runnable {
     private void moveToErrorFolder(Exception e) {
         try {
             // Preserve subfolder structure for error folder
-            String relativePath = FileUtils.getRelativePath(inputFile, systemConfig.getVoiceInputFolder());
+            String relativePath = FileUtils.getRelativePath(inputFile, systemConfig.getPcrfInputFolder());
             String subfolderPath = new File(relativePath).getParent();
             
-            String errorFolder = systemConfig.getVoiceErrorFolder();
+            String errorFolder = systemConfig.getPcrfErrorFolder();
             if (subfolderPath != null && !subfolderPath.isEmpty()) {
                 FileUtils.createDirectoryStructure(errorFolder, subfolderPath);
                 errorFolder = new File(errorFolder, subfolderPath).getAbsolutePath();
@@ -197,7 +227,7 @@ public class VoiceCDRProcessor implements Runnable {
             }
             
             String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-            String errorFileName = String.format("%s_%s_VOICE_ERROR_%s", 
+            String errorFileName = String.format("%s_%s_PCRF_ERROR_%s", 
                 FileUtils.getNameWithoutExtension(inputFile.getName()), 
                 timestamp,
                 e.getClass().getSimpleName());
@@ -205,22 +235,22 @@ public class VoiceCDRProcessor implements Runnable {
             File errorFile = new File(errorFolder, errorFileName + FileUtils.getExtension(inputFile.getName()));
             Files.move(inputFile.toPath(), errorFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
             
-            log.error("Moved failed voice CDR file {} to error folder: {}", 
+            log.error("Moved failed PCRF CDR file {} to error folder: {}", 
                 inputFile.getName(), errorFile.getAbsolutePath());
             
             // Log detailed error information
             logDetailedError(inputFile, errorFile, e);
             
         } catch (Exception moveException) {
-            log.error("Failed to move voice CDR file {} to error folder", inputFile.getName(), moveException);
+            log.error("Failed to move PCRF CDR file {} to error folder", inputFile.getName(), moveException);
         }
     }
     
     private void logDetailedError(File originalFile, File errorFile, Exception e) {
         try {
-            File errorLogFile = new File(systemConfig.getVoiceErrorFolder(), "voice_error_log.txt");
+            File errorLogFile = new File(systemConfig.getPcrfErrorFolder(), "pcrf_error_log.txt");
             try (PrintWriter writer = new PrintWriter(new FileWriter(errorLogFile, true))) {
-                writer.println(String.format("[%s] VOICE CDR PROCESSING ERROR", 
+                writer.println(String.format("[%s] PCRF CDR PROCESSING ERROR", 
                     new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date())));
                 writer.println(String.format("Original File: %s", originalFile.getAbsolutePath()));
                 writer.println(String.format("Error File: %s", errorFile.getAbsolutePath()));

@@ -42,21 +42,6 @@ public class FileUtils {
         return "";
     }
     
-    /**
-     * Check if file is a Voice CDR file
-     */
-    public static boolean isVoiceCDR(File file) {
-        String fileName = file.getName().toLowerCase();
-        return fileName.contains("voice") || fileName.contains("call") || fileName.endsWith(".vcdr");
-    }
-    
-    /**
-     * Check if file is a Data CDR file
-     */
-    public static boolean isDataCDR(File file) {
-        String fileName = file.getName().toLowerCase();
-        return fileName.contains("data") || fileName.contains("session") || fileName.endsWith(".dcdr");
-    }
     
     /**
      * Create directory if it doesn't exist
@@ -124,26 +109,63 @@ public class FileUtils {
     }
     
     /**
-     * Scan input folder for files
+     * Scan input folder for files (including subfolders)
      */
     public static List<File> scanInputFolder(String inputFolder) {
         List<File> files = new ArrayList<>();
         try {
             File folder = new File(inputFolder);
             if (folder.exists() && folder.isDirectory()) {
-                File[] fileArray = folder.listFiles();
-                if (fileArray != null) {
-                    for (File file : fileArray) {
-                        if (file.isFile()) {
-                            files.add(file);
-                        }
-                    }
-                }
+                scanDirectoryRecursively(folder, files);
             }
         } catch (Exception e) {
             log.error("Failed to scan input folder: {}", inputFolder, e);
         }
         return files;
+    }
+    
+    /**
+     * Recursively scan directory for files
+     */
+    private static void scanDirectoryRecursively(File directory, List<File> files) {
+        File[] fileArray = directory.listFiles();
+        if (fileArray != null) {
+            for (File file : fileArray) {
+                if (file.isFile()) {
+                    files.add(file);
+                } else if (file.isDirectory()) {
+                    scanDirectoryRecursively(file, files);
+                }
+            }
+        }
+    }
+    
+    /**
+     * Get relative path from base folder
+     */
+    public static String getRelativePath(File file, String baseFolder) {
+        String filePath = file.getAbsolutePath();
+        String basePath = new File(baseFolder).getAbsolutePath();
+        
+        if (filePath.startsWith(basePath)) {
+            String relativePath = filePath.substring(basePath.length());
+            if (relativePath.startsWith(File.separator)) {
+                relativePath = relativePath.substring(1);
+            }
+            return relativePath;
+        }
+        return file.getName();
+    }
+    
+    /**
+     * Create directory structure preserving subfolder hierarchy
+     */
+    public static void createDirectoryStructure(String baseFolder, String relativePath) {
+        File targetDir = new File(baseFolder, relativePath);
+        if (!targetDir.exists()) {
+            targetDir.mkdirs();
+            log.debug("Created directory structure: {}", targetDir.getAbsolutePath());
+        }
     }
     
     /**

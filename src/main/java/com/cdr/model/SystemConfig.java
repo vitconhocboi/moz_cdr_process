@@ -13,9 +13,28 @@ public class SystemConfig {
     private String backupFolder;
     private String errorFolder;
     
+    // Voice CDR folders
+    private String voiceInputFolder;
+    private String voiceOutputFolder;
+    private String voiceBackupFolder;
+    private String voiceErrorFolder;
+    
+    // Data CDR folders
+    private String dataInputFolder;
+    private String dataOutputFolder;
+    private String dataBackupFolder;
+    private String dataErrorFolder;
+    
+    // PCRF CDR folders
+    private String pcrfInputFolder;
+    private String pcrfOutputFolder;
+    private String pcrfBackupFolder;
+    private String pcrfErrorFolder;
+    
     // Slave configurations
     private int voiceSlaves;
     private int dataSlaves;
+    private int pcrfSlaves;
     
     // Processing configurations
     private int batchSize;
@@ -104,6 +123,14 @@ public class SystemConfig {
     
     public void setDataSlaves(int dataSlaves) {
         this.dataSlaves = dataSlaves;
+    }
+    
+    public int getPcrfSlaves() {
+        return pcrfSlaves;
+    }
+    
+    public void setPcrfSlaves(int pcrfSlaves) {
+        this.pcrfSlaves = pcrfSlaves;
     }
     
     public int getBatchSize() {
@@ -232,5 +259,104 @@ public class SystemConfig {
     
     public void setLoggingMaxFiles(int loggingMaxFiles) {
         this.loggingMaxFiles = loggingMaxFiles;
+    }
+    
+    // Voice CDR folder getters and setters
+    public String getVoiceInputFolder() {
+        return voiceInputFolder;
+    }
+    
+    public void setVoiceInputFolder(String voiceInputFolder) {
+        this.voiceInputFolder = voiceInputFolder;
+    }
+    
+    public String getVoiceOutputFolder() {
+        return voiceOutputFolder;
+    }
+    
+    public void setVoiceOutputFolder(String voiceOutputFolder) {
+        this.voiceOutputFolder = voiceOutputFolder;
+    }
+    
+    public String getVoiceBackupFolder() {
+        return voiceBackupFolder;
+    }
+    
+    public void setVoiceBackupFolder(String voiceBackupFolder) {
+        this.voiceBackupFolder = voiceBackupFolder;
+    }
+    
+    public String getVoiceErrorFolder() {
+        return voiceErrorFolder;
+    }
+    
+    public void setVoiceErrorFolder(String voiceErrorFolder) {
+        this.voiceErrorFolder = voiceErrorFolder;
+    }
+    
+    // Data CDR folder getters and setters
+    public String getDataInputFolder() {
+        return dataInputFolder;
+    }
+    
+    public void setDataInputFolder(String dataInputFolder) {
+        this.dataInputFolder = dataInputFolder;
+    }
+    
+    public String getDataOutputFolder() {
+        return dataOutputFolder;
+    }
+    
+    public void setDataOutputFolder(String dataOutputFolder) {
+        this.dataOutputFolder = dataOutputFolder;
+    }
+    
+    public String getDataBackupFolder() {
+        return dataBackupFolder;
+    }
+    
+    public void setDataBackupFolder(String dataBackupFolder) {
+        this.dataBackupFolder = dataBackupFolder;
+    }
+    
+    public String getDataErrorFolder() {
+        return dataErrorFolder;
+    }
+    
+    public void setDataErrorFolder(String dataErrorFolder) {
+        this.dataErrorFolder = dataErrorFolder;
+    }
+    
+    // PCRF CDR folder getters and setters
+    public String getPcrfInputFolder() {
+        return pcrfInputFolder;
+    }
+    
+    public void setPcrfInputFolder(String pcrfInputFolder) {
+        this.pcrfInputFolder = pcrfInputFolder;
+    }
+    
+    public String getPcrfOutputFolder() {
+        return pcrfOutputFolder;
+    }
+    
+    public void setPcrfOutputFolder(String pcrfOutputFolder) {
+        this.pcrfOutputFolder = pcrfOutputFolder;
+    }
+    
+    public String getPcrfBackupFolder() {
+        return pcrfBackupFolder;
+    }
+    
+    public void setPcrfBackupFolder(String pcrfBackupFolder) {
+        this.pcrfBackupFolder = pcrfBackupFolder;
+    }
+    
+    public String getPcrfErrorFolder() {
+        return pcrfErrorFolder;
+    }
+    
+    public void setPcrfErrorFolder(String pcrfErrorFolder) {
+        this.pcrfErrorFolder = pcrfErrorFolder;
     }
 }

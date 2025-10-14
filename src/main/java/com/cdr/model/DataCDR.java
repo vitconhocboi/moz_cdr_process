@@ -11,6 +11,7 @@ public class DataCDR extends CDRRecord {
     private double totalFlux;
     private double upFlux;
     private double downFlux;
+    private double totalChargeFlux;
     private long sessionDuration;
     private String apn;
     private String startTime;
@@ -68,6 +69,14 @@ public class DataCDR extends CDRRecord {
         this.downFlux = downFlux;
     }
     
+    public double getTotalChargeFlux() {
+        return totalChargeFlux;
+    }
+    
+    public void setTotalChargeFlux(double totalChargeFlux) {
+        this.totalChargeFlux = totalChargeFlux;
+    }
+    
     public long getSessionDuration() {
         return sessionDuration;
     }
@@ -109,6 +118,7 @@ public class DataCDR extends CDRRecord {
                 ", totalFlux=" + totalFlux +
                 ", upFlux=" + upFlux +
                 ", downFlux=" + downFlux +
+                ", totalChargeFlux=" + totalChargeFlux +
                 ", sessionDuration=" + sessionDuration +
                 ", apn='" + apn + '\'' +
                 ", startTime='" + startTime + '\'' +
