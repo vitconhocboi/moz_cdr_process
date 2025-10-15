@@ -59,9 +59,6 @@ public class MasterController {
         
         // Process Data CDR files
         processDataFiles();
-        
-        // Process PCRF CDR files
-        processPcrfFiles();
     }
     
     private void processVoiceFiles() {
@@ -88,20 +85,6 @@ public class MasterController {
             } catch (Exception e) {
                 log.error("Error processing data file: {}", file.getName(), e);
                 moveToErrorFolder(file, "DATA_PROCESSING_ERROR: " + e.getMessage());
-            }
-        }
-    }
-    
-    private void processPcrfFiles() {
-        List<File> files = FileUtils.scanInputFolder(pcrfInputFolder);
-        log.info("Found {} PCRF CDR files to process", files.size());
-        
-        for (File file : files) {
-            try {
-                pcrfExecutor.submit(new PcrfCDRProcessor(file, systemConfig));
-            } catch (Exception e) {
-                log.error("Error processing PCRF file: {}", file.getName(), e);
-                moveToErrorFolder(file, "PCRF_PROCESSING_ERROR: " + e.getMessage());
             }
         }
     }

@@ -6,10 +6,12 @@
 Hệ thống xử lý dữ liệu CDR (Call Detail Record) được thiết kế để xử lý các file text chứa dữ liệu cuộc gọi và dữ liệu data, thực hiện các thao tác chỉnh sửa hoặc xóa các trường thông tin theo cấu hình.
 
 ### 1.2 Phạm Vi
-- Xử lý dữ liệu Voice CDR: Giảm trừ ChargeAmount về 0 cho các tài khoản được cấu hình
+- Xử lý dữ liệu Voice CDR: Giảm trừ ChargeAmount về 0 và giảm thời gian cuộc gọi cho các tài khoản đặc biệt
 - Xử lý dữ liệu Data CDR: Giảm trừ TotalFlux, UpFlux, DownFlux theo tỷ lệ phần trăm
+- Xử lý dữ liệu PCRF CDR: Giảm trừ TotalFlux, UpFlux, DownFlux theo tỷ lệ phần trăm
 - Kiến trúc Master-Slave để xử lý song song
 - Cấu hình linh hoạt cho input, output, backup folders
+- Cấu hình riêng biệt cho từng loại CDR (Voice, Data, PCRF)
 
 ## 2. Kiến Trúc Hệ Thống
 
@@ -17,60 +19,137 @@ Hệ thống xử lý dữ liệu CDR (Call Detail Record) được thiết kế
 
 ```mermaid
 graph TB
-    A[Input Folder] --> B[Master Controller]
-    B --> C[File Scanner]
-    B --> D[Task Distributor]
-    D --> E[Voice CDR Slave 1]
-    D --> F[Voice CDR Slave 2]
-    D --> G[Data CDR Slave 1]
-    D --> H[Data CDR Slave 2]
-    E --> I[Output Folder]
-    F --> I
-    G --> I
-    H --> I
-    E --> J[Backup Folder]
-    F --> J
-    G --> J
-    H --> J
-    E --> K[Error Folder]
-    F --> K
-    G --> K
-    H --> K
-    B --> K
+    subgraph "Input Folders"
+        A1[Voice Input]
+        A2[Data Input]
+        A3[PCRF Input]
+    end
+    
+    subgraph "Master Controller"
+        B[Master Controller]
+        C[File Scanner]
+        D[Task Distributor]
+    end
+    
+    subgraph "Processing Slaves"
+        E[Voice CDR Slave 1]
+        F[Voice CDR Slave 2]
+        G[Data CDR Slave 1]
+        H[Data CDR Slave 2]
+        I[PCRF CDR Slave 1]
+        J[PCRF CDR Slave 2]
+    end
+    
+    subgraph "Output Folders"
+        K1[Voice Output]
+        K2[Data Output]
+        K3[PCRF Output]
+    end
+    
+    subgraph "Backup Folders"
+        L1[Voice Backup]
+        L2[Data Backup]
+        L3[PCRF Backup]
+    end
+    
+    subgraph "Error Folders"
+        M1[Voice Error]
+        M2[Data Error]
+        M3[PCRF Error]
+    end
+    
+    A1 --> B
+    A2 --> B
+    A3 --> B
+    
+    B --> C
+    C --> D
+    
+    D --> E
+    D --> F
+    D --> G
+    D --> H
+    D --> I
+    D --> J
+    
+    E --> K1
+    F --> K1
+    G --> K2
+    H --> K2
+    I --> K3
+    J --> K3
+    
+    E --> L1
+    F --> L1
+    G --> L2
+    H --> L2
+    I --> L3
+    J --> L3
+    
+    E --> M1
+    F --> M1
+    G --> M2
+    H --> M2
+    I --> M3
+    J --> M3
 ```
 
 ### 2.2 Luồng Xử Lý Chính
 
 ```mermaid
 flowchart TD
-    A[Start] --> B[Scan Input Folder]
-    B --> C{File Type?}
-    C -->|Voice CDR| D[Assign to Voice Slave]
-    C -->|Data CDR| E[Assign to Data Slave]
-    C -->|Unknown| Z[Move to Error Folder]
-    D --> F[Process Voice CDR]
-    E --> G[Process Data CDR]
-    F --> H{Processing Success?}
-    G --> I{Processing Success?}
-    H -->|Yes| J[Check AccountType1-10]
-    H -->|No| Y[Move to Error Folder]
-    I -->|Yes| K[Check AccountType1-10]
-    I -->|No| Y
-    J --> L{Account in Config?}
-    K --> M{Account in Config?}
-    L -->|Yes| N[Set ChargeAmount = 0]
-    L -->|No| O[Keep Original]
-    M -->|Yes| P[Apply Percentage Reduction]
-    M -->|No| Q[Keep Original]
-    N --> R[Write to Output]
-    O --> R
-    P --> R
-    Q --> R
-    R --> S[Backup Original]
-    S --> T[End]
-    Y --> U[Log Error Details]
-    Z --> U
-    U --> V[End]
+    A[Start] --> B[Scan Input Folders]
+    B --> C{Folder Type?}
+    C -->|Voice Folder| D[Assign to Voice Slaves]
+    C -->|Data Folder| E[Assign to Data Slaves]
+    C -->|PCRF Folder| F[Assign to PCRF Slaves]
+    
+    D --> G[Process Voice CDR]
+    E --> H[Process Data CDR]
+    F --> I[Process PCRF CDR]
+    
+    G --> J{Processing Success?}
+    H --> K{Processing Success?}
+    I --> L{Processing Success?}
+    
+    J -->|Yes| M[Check Voice Account Types]
+    J -->|No| Y[Move to Voice Error Folder]
+    
+    K -->|Yes| N[Check Data Account Types]
+    K -->|No| Y
+    
+    L -->|Yes| O[Check PCRF Account Types]
+    L -->|No| Y
+    
+    M --> P{Special Account?}
+    P -->|Yes| Q[Apply Voice Rules]
+    P -->|No| R[Keep Original]
+    
+    N --> S{Account in Config?}
+    S -->|Yes| T[Apply Data Reduction]
+    S -->|No| U[Keep Original]
+    
+    O --> V{Account in Config?}
+    V -->|Yes| W[Apply PCRF Reduction]
+    V -->|No| X[Keep Original]
+    
+    Q --> AA[Write to Voice Output]
+    R --> AA
+    T --> BB[Write to Data Output]
+    U --> BB
+    W --> CC[Write to PCRF Output]
+    X --> CC
+    
+    AA --> DD[Backup to Voice Backup]
+    BB --> EE[Backup to Data Backup]
+    CC --> FF[Backup to PCRF Backup]
+    
+    DD --> GG[End]
+    EE --> GG
+    FF --> GG
+    
+    Y --> HH[Log Error Details]
+    HH --> II[End]
 ```
 
 ## 3. Thiết Kế Chi Tiết
@@ -122,18 +201,33 @@ cdr.output.folder=/data/output
 cdr.backup.folder=/data/backup
 cdr.error.folder=/data/error
 
+# Voice CDR Folders
+cdr.voice.input.folder=/data/input/voice
+cdr.voice.output.folder=/data/output/voice
+cdr.voice.backup.folder=/data/backup/voice
+cdr.voice.error.folder=/data/error/voice
+
+# Data CDR Folders
+cdr.data.input.folder=/data/input/data
+cdr.data.output.folder=/data/output/data
+cdr.data.backup.folder=/data/backup/data
+cdr.data.error.folder=/data/error/data
+
+# PCRF CDR Folders
+cdr.pcrf.input.folder=/data/input/pcrf
+cdr.pcrf.output.folder=/data/output/pcrf
+cdr.pcrf.backup.folder=/data/backup/pcrf
+cdr.pcrf.error.folder=/data/error/pcrf
+
 # Slave Configuration
 cdr.voice.slaves=2
 cdr.data.slaves=2
+cdr.pcrf.slaves=2
 
 # Processing Configuration
 cdr.batch.size=1000
 cdr.thread.pool.size=10
-
-# Account Configuration
-cdr.voice.accounts=ACC001,ACC002,ACC003
-cdr.data.accounts=DATA001,DATA002
-cdr.data.reduction.percentage=50.0
+cdr.processing.interval=60000
 
 # High Availability Configuration
 cdr.server.name=${HOSTNAME:cdr-server-01}
@@ -156,67 +250,397 @@ cdr.logging.max.size=100MB
 cdr.logging.max.files=10
 ```
 
-#### 3.2.2 File cdr-config.properties
+#### 3.2.2 File voice-config.properties
 ```properties
-# Voice CDR Processing Configuration
-cdr.voice.accounts=ACC001,ACC002,ACC003
-cdr.voice.action=SET_CHARGE_TO_ZERO
-cdr.voice.charge.amount=0.0
+# Voice CDR Charge Configuration
+ocsChargeCount=10
+AccountType1=76
+FeeType1=77
+ChargeAmount1=78
+CurrentAcctAmount1=79
+AccountType2=80
+FeeType2=81
+ChargeAmount2=82
+CurrentAcctAmount2=83
+AccountType3=84
+FeeType3=85
+ChargeAmount3=86
+CurrentAcctAmount3=87
+AccountType4=88
+FeeType4=89
+ChargeAmount4=90
+CurrentAcctAmount4=91
+AccountType5=92
+FeeType5=93
+ChargeAmount5=94
+CurrentAcctAmount5=95
+AccountType6=96
+FeeType6=97
+ChargeAmount6=98
+CurrentAcctAmount6=99
+AccountType7=100
+FeeType7=101
+ChargeAmount7=102
+CurrentAcctAmount7=103
+AccountType8=104
+FeeType8=105
+ChargeAmount8=106
+CurrentAcctAmount8=107
+AccountType9=108
+FeeType9=109
+ChargeAmount9=110
+CurrentAcctAmount9=111
+AccountType10=112
+FeeType10=113
+ChargeAmount10=114
+CurrentAcctAmount10=115
 
+# Voice CDR Fee Type Money Value Configuration
+feeTypeMoneyValue=2
+amountRate=0.5
+callDurationPosition=22
+
+# Voice CDR Special Account Duration Reduction
+cdr.voice.special.accounts=15403,15404,15405
+```
+
+#### 3.2.3 File data-config.properties
+```properties
 # Data CDR Processing Configuration
 cdr.data.accounts=DATA001,DATA002
 cdr.data.reduction.percentage=50.0
 cdr.data.fields=TotalFlux,UpFlux,DownFlux
 
-# File Processing Configuration
-cdr.file.encoding=UTF-8
-cdr.file.delimiter=|
-cdr.file.quote.character="
-cdr.file.escape.character=\\
+# Data CDR White List Configuration
+cdr.data.whitelist.accounts=WHITE001,WHITE002,WHITE003
+cdr.data.whitelist.enabled=true
 
-# Voice CDR Field Mapping
-cdr.voice.fields.accounttype1=AccountType1
-cdr.voice.fields.accounttype2=AccountType2
-cdr.voice.fields.accounttype3=AccountType3
-cdr.voice.fields.accounttype4=AccountType4
-cdr.voice.fields.accounttype5=AccountType5
-cdr.voice.fields.accounttype6=AccountType6
-cdr.voice.fields.accounttype7=AccountType7
-cdr.voice.fields.accounttype8=AccountType8
-cdr.voice.fields.accounttype9=AccountType9
-cdr.voice.fields.accounttype10=AccountType10
-cdr.voice.fields.chargeamount=ChargeAmount
+# Data CDR Field Positions
+dataTotalFluxPosition=17
+dataUpFluxPosition=18
+dataDownFluxPosition=19
+dataTotalChargeFluxPosition=58
 
-# Data CDR Field Mapping
-cdr.data.fields.accounttype1=AccountType1
-cdr.data.fields.accounttype2=AccountType2
-cdr.data.fields.accounttype3=AccountType3
-cdr.data.fields.accounttype4=AccountType4
-cdr.data.fields.accounttype5=AccountType5
-cdr.data.fields.accounttype6=AccountType6
-cdr.data.fields.accounttype7=AccountType7
-cdr.data.fields.accounttype8=AccountType8
-cdr.data.fields.accounttype9=AccountType9
-cdr.data.fields.accounttype10=AccountType10
-cdr.data.fields.totalflux=TotalFlux
-cdr.data.fields.upflux=UpFlux
-cdr.data.fields.downflux=DownFlux
+# Data Charge Configuration
+dataChargeCount=5
+dataAccountType1=76
+dataFeeType1=77
+dataChargeAmount1=78
+dataCurrentAcctAmount1=79
+dataAccountType2=80
+dataFeeType2=81
+dataChargeAmount2=82
+dataCurrentAcctAmount2=83
+dataAccountType3=84
+dataFeeType3=85
+dataChargeAmount3=86
+dataCurrentAcctAmount3=87
+dataAccountType4=88
+dataFeeType4=89
+dataChargeAmount4=90
+dataCurrentAcctAmount4=91
+dataAccountType5=92
+dataFeeType5=93
+dataChargeAmount5=94
+dataCurrentAcctAmount5=95
 
-# Processing Rules
-cdr.processing.rule.voice.enabled=true
-cdr.processing.rule.data.enabled=true
-cdr.processing.rule.backup.enabled=true
-cdr.processing.rule.validation.enabled=true
+# Special Data Charge Configuration
+dataSpecialChargeCount=3
+dataSpecialAccountType1=15403
+dataDiscountRate1=100
+dataSpecialAccountType2=15404
+dataDiscountRate2=100
+dataSpecialAccountType3=15405
+dataDiscountRate3=100
+```
 
-# Validation Rules
-cdr.validation.required.fields.voice=AccountType1,ChargeAmount
-cdr.validation.required.fields.data=AccountType1,TotalFlux,UpFlux,DownFlux
-cdr.validation.numeric.fields=ChargeAmount,TotalFlux,UpFlux,DownFlux
+#### 3.2.4 File pcrf-config.properties
+```properties
+# PCRF CDR Processing Configuration
+cdr.pcrf.accounts=PCRF001,PCRF002,PCRF003
+cdr.pcrf.reduction.percentage=30.0
+
+# PCRF CDR Field Positions
+pcrfTotalFluxPosition=15
+pcrfUpFluxPosition=16
+pcrfDownFluxPosition=17
+pcrfTotalChargeFluxPosition=18
+
+# PCRF Charge Configuration
+pcrfChargeCount=5
+pcrfAccountType1=76
+pcrfFeeType1=77
+pcrfChargeAmount1=78
+pcrfCurrentAcctAmount1=79
+pcrfAccountType2=80
+pcrfFeeType2=81
+pcrfChargeAmount2=82
+pcrfCurrentAcctAmount2=83
+pcrfAccountType3=84
+pcrfFeeType3=85
+pcrfChargeAmount3=86
+pcrfCurrentAcctAmount3=87
+pcrfAccountType4=88
+pcrfFeeType4=89
+pcrfChargeAmount4=90
+pcrfCurrentAcctAmount4=91
+pcrfAccountType5=92
+pcrfFeeType5=93
+pcrfChargeAmount5=94
+pcrfCurrentAcctAmount5=95
+
+# Special PCRF Charge Configuration
+pcrfSpecialChargeCount=3
+pcrfSpecialAccountType1=15403
+pcrfDiscountRate1=100
+pcrfSpecialAccountType2=15404
+pcrfDiscountRate2=100
+pcrfSpecialAccountType3=15405
+pcrfDiscountRate3=100
 ```
 
 ### 3.3 Luồng Xử Lý Chi Tiết
 
-#### 3.3.1 Xử Lý Voice CDR
+#### 3.3.1 Xử Lý Voice CDR với Duration Reduction
+
+**Mô tả quy trình xử lý Voice CDR:**
+Mô tả các trường trong file cdr nằm trong file Documents\MobilePostpaid_CDR description_vOCS3.0 Movitel.csv
+Ví dụ các file cdr nằm trong thư mục Documents\CDR\voice
+
+1. **Quét thư mục input voice**: Hệ thống quét thư mục `/data/input/voice` để tìm các file CDR voice
+2. **Đọc cấu hình**: Load cấu hình từ `voice-config.properties` bao gồm:
+   - Danh sách tài khoản thường: `cdr.voice.accounts`
+   - Danh sách tài khoản đặc biệt: `specialAccountType1-3` (15403, 15404, 15405)
+   - Tỷ lệ giảm giá: `discountRate1-3` (100%)
+   - Vị trí các trường: `AccountType1-10`, `FeeType1-10`, `ChargeAmount1-10`
+   - Cấu hình giảm thời gian: `feeTypeMoneyValue`, `amountRate`, `callDurationPosition`
+
+3. **Phân tích từng bản ghi CDR**:
+   - **Kiểm tra AccountType1-10**: Xác định loại tài khoản trong các vị trí 76, 80, 84, 88, 92, 96, 100, 104, 108, 112
+   - **Kiểm tra FeeType1-10**: Xác định loại phí (tiến hoặc lưu lượng) trong các vị trí 77, 81, 85, 89, 93, 97, 101, 105, 109, 113
+   - **Kiểm tra ChargeAmount1-10**: Lấy lưu lượng hoặc số tiền phí trong các vị trí 78, 82, 86, 90, 94, 98, 102, 106, 110, 114
+   - **Kiểm tra CurrentAcctAmount1-10**: Lấy lưu lượng hoặc số tiền phí trong các vị trí 79, 83, 87, 91, 95, 99, 103, 107, 111, 115
+
+4. **Xử lý tài khoản đặc biệt** (15403, 15404, 15405):
+   - **Điều kiện**: AccountType thuộc danh sách đặc biệt
+   - **Tính toán giảm thời gian**: Nếu loại tài khoản là lưu lượng thì thời gian là `ChargeAmount` hoặc nếu là tiền thì tính theo rate thời gian là `(ChargeAmount / amountRate)`
+   - **Giảm thời gian cuộc gọi**: Trường `CallDuration` tại vị trí 22
+   - **Đặt phí về 0**: `ChargeAmount = 0` cho tài khoản đặc biệt
+   - **Bù lại chi phí**: `CurrentAcctAmount = CurrentAcctAmount + oldChargeAmount`
+
+6. **Ghi kết quả**:
+   - **Output**: Ghi file đã xử lý vào `/data/output/voice`
+   - **Backup**: Sao lưu file gốc vào `/data/backup/voice`
+   - **Error**: Nếu lỗi, chuyển file vào `/data/error/voice`
+
+**Các trường CDR được sử dụng và thay đổi:**
+
+| Trường | Vị trí | Mô tả | Thay đổi |
+|--------|--------|-------|----------|
+| AccountType1-10 | 71, 75, 79, 83, 87, 91, 95, 99, 103, 107 | Loại tài khoản | Không thay đổi |
+| FeeType1-10 | 72, 76, 80, 84, 88, 92, 96, 100, 104, 108 | Loại phí | Không thay đổi |
+| ChargeAmount1-10 | 73, 77, 81, 85, 89, 93, 97, 101, 105, 109 | Số tiền phí | Đặt về 0 |
+| CurrentAcctAmount1-10 |  79, 83, 87, 91, 95, 99, 103, 107, 111, 115 | Số tiền còn lại | Cộng lại số tiền ChargeAmount đã giảm trừ|
+| CallDuration | 22 | Thời gian cuộc gọi | Giảm theo công thức tính toán |
+
+
+**Công thức tính giảm thời gian:**
+```
+Giảm thời gian = nếu tài khoản là lưu lượng FeeType1-10 khác giá trị cấu hình   (ChargeAmount / amountRate)
+Thời gian mới = Max(0, Thời gian cũ - Giảm thời gian)
+```
+
+**Ví dụ tính toán:**
+- AccountType1 = 2408304 
+- FeeType1 = 0 (loại lưu lượng)
+- ChargeAmount1 = 25
+- CurrentAcctAmount1 = 168
+- CallDuration = 25
+- amountRate = 0.5
+- Giảm thời gian  = 25 giây
+- call duration = 25 - 25 = 0
+- ChargeAmount mới = 28 + 1 = 29
+
+**Báo cáo xử lý Voice CDR:**
+
+Hệ thống tự động tạo báo cáo chi tiết cho mỗi file Voice CDR được xử lý, bao gồm:
+
+1. **Thông tin cuộc gọi**:
+   - **Calling Number**: Số điện thoại người gọi (trường vị trí 4)
+   - **Called Number**: Số điện thoại người nhận (trường vị trí 5)
+   - **Start Time**: Thời gian bắt đầu cuộc gọi (trường vị trí 2)
+
+2. **Thông tin thời gian**:
+   - **Old Duration**: Thời gian cuộc gọi ban đầu (trường vị trí 22)
+   - **New Duration**: Thời gian cuộc gọi sau khi giảm
+   - **Duration Reduction**: Số giây đã giảm
+   - **Reduction Percentage**: Tỷ lệ phần trăm giảm thời gian
+
+3. **Thông tin tài khoản**:
+   - **Account Type**: Loại tài khoản được xử lý
+   - **Fee Type**: Loại amount tiền hoặc lưu lượng
+   - **Charge Amount**: Số tiền hoặc lưu lượng
+   - **Current Acct Amount**: Số tiền hoặc lưu lượng còn lại
+
+4. **Định dạng báo cáo**:
+```
+CallID|Calling|Called|StartTime|OldDuration|NewDuration|DurationReduction|AcctType1|FreeType1|OldChargeAmt1|NewChargeAmt1|OldCurAcctAmt1|NewCurAcctAmt1|...|AcctType10|FreeType10|OldChargeAmt10|NewChargeAmt10|OldCurAcctAmt10|NewCurAcctAmt10
+20241201143022001|+258841234567|+258842345678|2024-12-01 14:30:22|3000|1000|2000|2408304|0|25|0|168|143|...|0|0|0|0|0|0
+20241201143022002|+258841234568|+258842345679|2024-12-01 14:31:15|2500|800|1700|2408305|0|20|0|160|140|...|0|0|0|0|0|0
+20241201143022003|+258841234569|+258842345680|2024-12-01 14:32:08|1800|1800|0|2408306|0|30|30|150|150|...|0|0|0|0|0|0
+```
+
+5. **Lưu trữ báo cáo**:
+   - **Báo cáo tổng hợp**: `/data/reports/voice_processing_report_YYYYMMDD.txt`
+   - **Báo cáo chi tiết**: `/data/reports/voice_detailed_report_YYYYMMDD_HHMMSS.txt`
+   - **Báo cáo pipe-separated**: `/data/reports/voice_pipe_report_YYYYMMDD_HHMMSS.txt`
+   - **Báo cáo lỗi**: `/data/reports/voice_error_report_YYYYMMDD.txt`
+
+6. **Thống kê báo cáo**:
+   - Tổng số bản ghi được xử lý
+   - Số bản ghi tài khoản đặc biệt
+   - Tổng thời gian giảm (giây)
+   - Tỷ lệ giảm thời gian trung bình
+   - Số tiền phí đã giảm
+
+**Implementation của Voice CDR Reporting:**
+
+```java
+public class VoiceCDRReporter {
+    
+    private static final Logger log = LoggerFactory.getLogger(VoiceCDRReporter.class);
+    private final String reportFolder;
+    private final Map<String, Object> processingStats = new HashMap<>();
+    private final List<VoiceCDRRecord> processedRecords = new ArrayList<>();
+    
+    public VoiceCDRReporter(SystemConfig config) {
+        this.reportFolder = config.getReportFolder();
+    }
+    
+    public void recordProcessedCall(VoiceCDR record, long oldDuration, long newDuration, 
+                                   String accountType, String processingType) {
+        VoiceCDRRecord reportRecord = new VoiceCDRRecord();
+        reportRecord.setCallId(record.getCallId());
+        reportRecord.setCallingNumber(record.getCallingNumber());
+        reportRecord.setCalledNumber(record.getCalledNumber());
+        reportRecord.setOldDuration(oldDuration);
+        reportRecord.setNewDuration(newDuration);
+        reportRecord.setDurationReduction(oldDuration - newDuration);
+        reportRecord.setAccountType(accountType);
+        reportRecord.setProcessingType(processingType);
+        reportRecord.setChargeAmount(record.getChargeAmount());
+        reportRecord.setProcessedAt(new Date());
+        
+        processedRecords.add(reportRecord);
+        updateStatistics(processingType, oldDuration - newDuration);
+    }
+    
+    public void generateReport(String fileName) {
+        try {
+            File reportFile = new File(reportFolder, fileName);
+            try (PrintWriter writer = new PrintWriter(new FileWriter(reportFile))) {
+                writeReportHeader(writer, fileName);
+                writeStatistics(writer);
+                writeDetailedRecords(writer);
+                writePipeSeparatedRecords(writer);
+            }
+            log.info("Voice CDR report generated: {}", reportFile.getAbsolutePath());
+        } catch (Exception e) {
+            log.error("Failed to generate Voice CDR report", e);
+        }
+    }
+    
+    public void generatePipeSeparatedReport(String fileName) {
+        try {
+            File reportFile = new File(reportFolder, fileName);
+            try (PrintWriter writer = new PrintWriter(new FileWriter(reportFile))) {
+                writePipeSeparatedRecords(writer);
+            }
+            log.info("Voice CDR pipe-separated report generated: {}", reportFile.getAbsolutePath());
+        } catch (Exception e) {
+            log.error("Failed to generate Voice CDR pipe-separated report", e);
+        }
+    }
+    
+    private void writeReportHeader(PrintWriter writer, String fileName) {
+        writer.println(String.format("[%s] VOICE CDR PROCESSING REPORT", 
+            new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date())));
+        writer.println("File: " + fileName);
+        writer.println("Total Records: " + processedRecords.size());
+        writer.println("Special Account Records: " + processingStats.get("specialAccountCount"));
+        writer.println("Regular Account Records: " + processingStats.get("regularAccountCount"));
+        writer.println();
+    }
+    
+    private void writeStatistics(PrintWriter writer) {
+        writer.println("=== PROCESSING STATISTICS ===");
+        writer.println("Total Duration Reduced: " + processingStats.get("totalDurationReduced") + " seconds");
+        writer.println("Average Reduction: " + processingStats.get("averageReduction") + "%");
+        writer.println("Total Charge Amount Reduced: " + processingStats.get("totalChargeReduced"));
+        writer.println();
+    }
+    
+    private void writeDetailedRecords(PrintWriter writer) {
+        writer.println("=== DETAILED RECORDS ===");
+        for (VoiceCDRRecord record : processedRecords) {
+            writer.println("Call ID: " + record.getCallId());
+            writer.println("Calling: " + record.getCallingNumber());
+            writer.println("Called: " + record.getCalledNumber());
+            writer.println("Old Duration: " + record.getOldDuration() + " seconds");
+            writer.println("New Duration: " + record.getNewDuration() + " seconds");
+            writer.println("Duration Reduction: " + record.getDurationReduction() + 
+                          " seconds (" + calculateReductionPercentage(record) + "%)");
+            writer.println("Account Type: " + record.getAccountType());
+            writer.println("Fee Type: " + record.getFeeType());
+            writer.println("Charge Amount: " + record.getChargeAmount());
+            writer.println("Processing Type: " + record.getProcessingType());
+            writer.println("---");
+        }
+    }
+    
+    private void writePipeSeparatedRecords(PrintWriter writer) {
+        writer.println("=== PIPE-SEPARATED RECORDS ===");
+        writer.println("CallID|Calling|Called|StartTime|OldDuration|NewDuration|DurationReduction|AccountType|ProcessingType");
+        for (VoiceCDRRecord record : processedRecords) {
+            writer.println(String.format("%s|%s|%s|%s|%d|%d|%d|%s|%s",
+                record.getCallId(),
+                record.getCallingNumber(),
+                record.getCalledNumber(),
+                record.getStartTime(),
+                record.getOldDuration(),
+                record.getNewDuration(),
+                record.getDurationReduction(),
+                record.getAccountType(),
+                record.getProcessingType()
+            ));
+        }
+    }
+    
+    private double calculateReductionPercentage(VoiceCDRRecord record) {
+        if (record.getOldDuration() == 0) return 0.0;
+        return (double) record.getDurationReduction() / record.getOldDuration() * 100.0;
+    }
+    
+    private void updateStatistics(String processingType, long durationReduction) {
+        // Update counts
+        if ("Special Account".equals(processingType)) {
+            processingStats.merge("specialAccountCount", 1, Integer::sum);
+        } else {
+            processingStats.merge("regularAccountCount", 1, Integer::sum);
+        }
+        
+        // Update duration reduction
+        processingStats.merge("totalDurationReduced", durationReduction, Long::sum);
+        
+        // Calculate average reduction
+        long totalReduction = (Long) processingStats.getOrDefault("totalDurationReduced", 0L);
+        int totalRecords = processedRecords.size();
+        if (totalRecords > 0) {
+            processingStats.put("averageReduction", totalReduction / totalRecords);
+        }
+    }
+}
+```
 
 ```mermaid
 sequenceDiagram
@@ -225,22 +649,151 @@ sequenceDiagram
     participant F as File System
     participant C as Config
 
-    M->>F: Scan input folder
-    F-->>M: Return file list
+    M->>F: Scan voice input folder
+    F-->>M: Return voice file list
     M->>C: Load voice accounts config
-    C-->>M: Return account list
-    M->>S: Assign file to slave
+    C-->>M: Return account list & special accounts
+    M->>S: Assign file to voice slave
     S->>F: Read file content
     F-->>S: Return file data
     S->>S: Parse CDR records
     S->>S: Check AccountType1-10
-    S->>S: Apply ChargeAmount = 0 if account matches
-    S->>F: Write processed data to output
-    S->>F: Backup original file
+    S->>S: Check FeeType for special accounts
+    S->>S: Calculate duration reduction
+    S->>S: Apply ChargeAmount = 0
+    S->>S: Reduce call duration
+    S->>F: Write processed data to voice output
+    S->>F: Backup original file to voice backup
     S-->>M: Report completion
 ```
 
-#### 3.3.2 Xử Lý Data CDR
+#### 3.3.2 Voice CDR Duration Reduction Logic
+
+```mermaid
+flowchart TD
+    A[Voice CDR Record] --> B{Check Account Types}
+    B -->|Special Account| C[Check FeeType]
+    B -->|Regular Account| D[Apply Standard Rules]
+    
+    C --> E{FeeType = feeTypeMoneyValue?}
+    E -->|Yes| F[Calculate Duration Reduction]
+    E -->|No| G[Apply Standard Charge Reduction]
+    
+    F --> H[Get ChargeAmount]
+    H --> I[Calculate: ChargeAmount/amountRate*percentRate]
+    I --> J[Reduce Call Duration]
+    J --> K[Set ChargeAmount = 0]
+    
+    G --> L[Set ChargeAmount = 0]
+    
+    D --> M[Keep Original Values]
+    
+    K --> N[Write to Output]
+    L --> N
+    M --> N
+```
+
+#### 3.3.3 Xử Lý Data CDR
+
+**Mô tả quy trình xử lý Data CDR:**
+
+1. **Quét thư mục input data**: Hệ thống quét thư mục `/data/input/data` để tìm các file CDR data
+2. **Đọc cấu hình**: Load cấu hình từ `data-config.properties` bao gồm:
+   - Danh sách tài khoản thường: `cdr.data.accounts`
+   - Danh sách tài khoản white list: `cdr.data.whitelist.accounts`
+   - Tỷ lệ giảm trừ: `cdr.data.reduction.percentage`
+   - Vị trí các trường: `AccountType1-10`, `FeeType1-10`, `ChargeAmount1-10`
+   - Vị trí các trường flux: `TotalFlux`, `UpFlux`, `DownFlux`, `TotalChargeFlux`
+
+3. **Phân tích từng bản ghi CDR**:
+   - **Kiểm tra AccountType1-10**: Xác định loại tài khoản trong các vị trí 76, 80, 84, 88, 92, 96, 100, 104, 108, 112
+   - **Kiểm tra FeeType1-10**: Xác định loại phí trong các vị trí 77, 81, 85, 89, 93, 97, 101, 105, 109, 113
+   - **Kiểm tra ChargeAmount1-10**: Lấy số tiền phí trong các vị trí 78, 82, 86, 90, 94, 98, 102, 106, 110, 114
+
+4. **Xử lý tài khoản white list**:
+   - **Điều kiện**: AccountType thuộc danh sách white list
+   - **Hành động**: Không thay đổi gì cả, giữ nguyên tất cả giá trị
+
+5. **Xử lý tài khoản thường**:
+   - **Điều kiện**: AccountType thuộc danh sách tài khoản thường
+   - **Giảm trừ ChargeAmount**: `ChargeAmount = ChargeAmount * (100 - reductionPercentage) / 100`
+   - **Giảm trừ TotalFlux**: `TotalFlux = TotalFlux * (100 - reductionPercentage) / 100`
+   - **Giảm trừ UpFlux**: `UpFlux = UpFlux * (100 - reductionPercentage) / 100`
+   - **Giảm trừ DownFlux**: `DownFlux = DownFlux * (100 - reductionPercentage) / 100`
+   - **Giảm trừ TotalChargeFlux**: `TotalChargeFlux = TotalChargeFlux * (100 - reductionPercentage) / 100`
+
+6. **Ghi kết quả**:
+   - **Output**: Ghi file đã xử lý vào `/data/output/data`
+   - **Backup**: Sao lưu file gốc vào `/data/backup/data`
+   - **Error**: Nếu lỗi, chuyển file vào `/data/error/data`
+
+**Các trường CDR được sử dụng và thay đổi:**
+
+| Trường | Vị trí | Mô tả | Thay đổi |
+|--------|--------|-------|----------|
+| AccountType1-10 | 76, 80, 84, 88, 92, 96, 100, 104, 108, 112 | Loại tài khoản | Không thay đổi |
+| FeeType1-10 | 77, 81, 85, 89, 93, 97, 101, 105, 109, 113 | Loại phí | Không thay đổi |
+| ChargeAmount1-10 | 78, 82, 86, 90, 94, 98, 102, 106, 110, 114 | Số tiền phí | Giảm theo tỷ lệ phần trăm |
+| TotalFlux | 17 | Tổng lưu lượng | Giảm theo tỷ lệ phần trăm |
+| UpFlux | 18 | Lưu lượng upload | Giảm theo tỷ lệ phần trăm |
+| DownFlux | 19 | Lưu lượng download | Giảm theo tỷ lệ phần trăm |
+| TotalChargeFlux | 58 | Tổng lưu lượng tính phí | Giảm theo tỷ lệ phần trăm |
+
+**Công thức tính giảm trừ:**
+```
+Giá trị mới = Giá trị cũ * (100 - reductionPercentage) / 100
+```
+
+**Ví dụ tính toán:**
+- reductionPercentage = 50%
+- ChargeAmount cũ = 1000 → ChargeAmount mới = 1000 * (100 - 50) / 100 = 500
+- TotalFlux cũ = 2000 → TotalFlux mới = 2000 * (100 - 50) / 100 = 1000
+
+**Báo cáo xử lý Data CDR:**
+
+Hệ thống tự động tạo báo cáo chi tiết cho mỗi file Data CDR được xử lý, bao gồm:
+
+1. **Thông tin cuộc gọi**:
+   - **Calling Number**: Số điện thoại người gọi (trường vị trí 5)
+   - **Called Number**: Số điện thoại người nhận (trường vị trí 6)
+   - **Start Time**: Thời gian bắt đầu kết nối (trường vị trí 3)
+
+2. **Thông tin lưu lượng**:
+   - **Old TotalFlux**: Tổng lưu lượng ban đầu
+   - **New TotalFlux**: Tổng lưu lượng sau khi giảm
+   - **Old UpFlux**: Lưu lượng upload ban đầu
+   - **New UpFlux**: Lưu lượng upload sau khi giảm
+   - **Old DownFlux**: Lưu lượng download ban đầu
+   - **New DownFlux**: Lưu lượng download sau khi giảm
+   - **Old TotalChargeFlux**: Tổng lưu lượng tính phí ban đầu
+   - **New TotalChargeFlux**: Tổng lưu lượng tính phí sau khi giảm
+
+3. **Thông tin tài khoản**:
+   - **Account Type**: Loại tài khoản được xử lý
+   - **Fee Type**: Loại phí
+   - **Charge Amount**: Số tiền phí
+   - **Processing Type**: Loại xử lý (White List / Regular Account)
+
+4. **Định dạng báo cáo**:
+```
+CallID|Calling|Called|StartTime|OldTotalFlux|NewTotalFlux|FluxReduction|OldUpFlux|NewUpFlux|UpFluxReduction|OldDownFlux|NewDownFlux|DownFluxReduction|OldTotalChargeFlux|NewTotalChargeFlux|TotalChargeFluxReduction|AccountType|ProcessingType
+20241201143022001|+258841234567|+258842345678|2024-12-01 14:30:22|2000|1000|1000|800|400|400|1200|600|600|1500|750|750|15403|Regular Account
+20241201143022002|+258841234568|+258842345679|2024-12-01 14:31:15|3000|3000|0|1200|1200|0|1800|1800|0|2000|2000|0|WHITE001|White List
+```
+
+5. **Lưu trữ báo cáo**:
+   - **Báo cáo tổng hợp**: `/data/reports/data_processing_report_YYYYMMDD.txt`
+   - **Báo cáo chi tiết**: `/data/reports/data_detailed_report_YYYYMMDD_HHMMSS.txt`
+   - **Báo cáo pipe-separated**: `/data/reports/data_pipe_report_YYYYMMDD_HHMMSS.txt`
+   - **Báo cáo lỗi**: `/data/reports/data_error_report_YYYYMMDD.txt`
+
+6. **Thống kê báo cáo**:
+   - Tổng số bản ghi được xử lý
+   - Số bản ghi tài khoản white list
+   - Số bản ghi tài khoản thường
+   - Tổng lưu lượng giảm (bytes)
+   - Tỷ lệ giảm lưu lượng trung bình
+   - Số tiền phí đã giảm
 
 ```mermaid
 sequenceDiagram
@@ -459,75 +1012,178 @@ public class CDRProcessorMain {
 }
 ```
 
-### 4.3 Configuration Utils
+### 4.4 Configuration Utils với Voice Duration Reduction
 
 ```java
-@Component
 public class ConfigUtils {
     
-    @Value("${cdr.voice.accounts}")
-    private String voiceAccounts;
+    private static final Logger log = LoggerFactory.getLogger(ConfigUtils.class);
     
-    @Value("${cdr.data.accounts}")
-    private String dataAccounts;
-    
-    @Value("${cdr.data.reduction.percentage}")
-    private double reductionPercentage;
-    
-    @Value("${cdr.voice.charge.amount}")
-    private double chargeAmount;
-    
-    @Value("${cdr.file.delimiter}")
-    private String delimiter;
-    
-    @Value("${cdr.file.encoding}")
-    private String encoding;
-    
-    public List<String> getVoiceAccounts() {
-        return Arrays.asList(voiceAccounts.split(","));
+    public static SystemConfig loadSystemConfig() {
+        Properties props = new Properties();
+        try (InputStream is = ConfigUtils.class.getClassLoader()
+                .getResourceAsStream("application.properties")) {
+            props.load(is);
+        } catch (IOException e) {
+            log.error("Failed to load application.properties", e);
+            throw new RuntimeException("Configuration loading failed", e);
+        }
+        
+        SystemConfig config = new SystemConfig();
+        // ... existing configuration loading ...
+        return config;
     }
     
-    public List<String> getDataAccounts() {
-        return Arrays.asList(dataAccounts.split(","));
+    // Voice configuration methods
+    public static List<String> getVoiceAccounts() {
+        Properties props = loadProperties("voice-config.properties");
+        String accounts = props.getProperty("cdr.voice.accounts", "");
+        return Arrays.asList(accounts.split(","));
     }
     
-    public double getReductionPercentage() {
-        return reductionPercentage;
+    public static Map<String, String> getSpecialAccountTypes() {
+        Properties props = loadProperties("voice-config.properties");
+        Map<String, String> specialAccounts = new HashMap<>();
+        int count = getSpecialChargeCount();
+        
+        for (int i = 1; i <= count; i++) {
+            String accountType = props.getProperty("specialAccountType" + i);
+            String discountRate = props.getProperty("discountRate" + i);
+            if (accountType != null) {
+                specialAccounts.put(accountType, discountRate != null ? discountRate : "0");
+            }
+        }
+        return specialAccounts;
     }
     
-    public double getChargeAmount() {
-        return chargeAmount;
+    public static int getSpecialChargeCount() {
+        Properties props = loadProperties("voice-config.properties");
+        return Integer.parseInt(props.getProperty("specialChargeCount", "3"));
     }
     
-    public String getDelimiter() {
-        return delimiter;
+    public static int getFeeTypeMoneyValue() {
+        Properties props = loadProperties("voice-config.properties");
+        return Integer.parseInt(props.getProperty("feeTypeMoneyValue", "100"));
     }
     
-    public String getEncoding() {
-        return encoding;
+    public static double getAmountRate() {
+        Properties props = loadProperties("voice-config.properties");
+        return Double.parseDouble(props.getProperty("amountRate", "0.5"));
     }
     
-    public boolean isVoiceProcessingEnabled() {
-        return true; // Can be made configurable
+    public static int getCallDurationPosition() {
+        Properties props = loadProperties("voice-config.properties");
+        return Integer.parseInt(props.getProperty("callDurationPosition", "15"));
     }
     
-    public boolean isDataProcessingEnabled() {
-        return true; // Can be made configurable
+    public static Map<String, Integer> getAccountTypePositions() {
+        Properties props = loadProperties("voice-config.properties");
+        Map<String, Integer> positions = new HashMap<>();
+        int count = getOcsChargeCount();
+        
+        for (int i = 1; i <= count; i++) {
+            String accountTypePos = props.getProperty("AccountType" + i);
+            String feeTypePos = props.getProperty("FeeType" + i);
+            String chargeAmountPos = props.getProperty("ChargeAmount" + i);
+            String currentAcctAmountPos = props.getProperty("CurrentAcctAmount" + i);
+            
+            if (accountTypePos != null) positions.put("AccountType" + i, Integer.parseInt(accountTypePos));
+            if (feeTypePos != null) positions.put("FeeType" + i, Integer.parseInt(feeTypePos));
+            if (chargeAmountPos != null) positions.put("ChargeAmount" + i, Integer.parseInt(chargeAmountPos));
+            if (currentAcctAmountPos != null) positions.put("CurrentAcctAmount" + i, Integer.parseInt(currentAcctAmountPos));
+        }
+        return positions;
+    }
+    
+    public static int getOcsChargeCount() {
+        Properties props = loadProperties("voice-config.properties");
+        return Integer.parseInt(props.getProperty("ocsChargeCount", "10"));
+    }
+    
+    // Data configuration methods
+    public static List<String> getDataAccounts() {
+        Properties props = loadProperties("data-config.properties");
+        String accounts = props.getProperty("cdr.data.accounts", "");
+        return Arrays.asList(accounts.split(","));
+    }
+    
+    public static List<String> getDataWhiteListAccounts() {
+        Properties props = loadProperties("data-config.properties");
+        String accounts = props.getProperty("cdr.data.whitelist.accounts", "");
+        return Arrays.asList(accounts.split(","));
+    }
+    
+    public static boolean isDataWhiteListEnabled() {
+        Properties props = loadProperties("data-config.properties");
+        return Boolean.parseBoolean(props.getProperty("cdr.data.whitelist.enabled", "true"));
+    }
+    
+    public static double getDataReductionPercentage() {
+        Properties props = loadProperties("data-config.properties");
+        return Double.parseDouble(props.getProperty("cdr.data.reduction.percentage", "50.0"));
+    }
+    
+    public static Map<String, Integer> getDataFieldPositions() {
+        Properties props = loadProperties("data-config.properties");
+        Map<String, Integer> positions = new HashMap<>();
+        
+        positions.put("totalFlux", Integer.parseInt(props.getProperty("dataTotalFluxPosition", "17")));
+        positions.put("upFlux", Integer.parseInt(props.getProperty("dataUpFluxPosition", "18")));
+        positions.put("downFlux", Integer.parseInt(props.getProperty("dataDownFluxPosition", "19")));
+        positions.put("totalChargeFlux", Integer.parseInt(props.getProperty("dataTotalChargeFluxPosition", "58")));
+        
+        return positions;
+    }
+    
+    // PCRF configuration methods
+    public static List<String> getPcrfAccounts() {
+        Properties props = loadProperties("pcrf-config.properties");
+        String accounts = props.getProperty("cdr.pcrf.accounts", "");
+        return Arrays.asList(accounts.split(","));
+    }
+    
+    public static double getPcrfReductionPercentage() {
+        Properties props = loadProperties("pcrf-config.properties");
+        return Double.parseDouble(props.getProperty("cdr.pcrf.reduction.percentage", "30.0"));
+    }
+    
+    private static Properties loadProperties(String fileName) {
+        Properties props = new Properties();
+        try (InputStream is = ConfigUtils.class.getClassLoader()
+                .getResourceAsStream(fileName)) {
+            props.load(is);
+        } catch (IOException e) {
+            log.error("Failed to load {}", fileName, e);
+        }
+        return props;
     }
 }
 ```
 
-### 4.3 Voice CDR Processor
+### 4.3 Voice CDR Processor với Duration Reduction
 
 ```java
 public class VoiceCDRProcessor implements Runnable {
     
     private File inputFile;
-    private ConfigUtils configUtils;
+    private SystemConfig systemConfig;
+    private List<String> configuredAccounts;
+    private Map<String, String> specialAccountTypes;
+    private Map<String, Integer> accountTypePositions;
+    private int feeTypeMoneyValue;
+    private double amountRate;
+    private int callDurationPosition;
+    private static final Logger log = LoggerFactory.getLogger(VoiceCDRProcessor.class);
     
-    public VoiceCDRProcessor(File inputFile, ConfigUtils configUtils) {
+    public VoiceCDRProcessor(File inputFile, SystemConfig systemConfig) {
         this.inputFile = inputFile;
-        this.configUtils = configUtils;
+        this.systemConfig = systemConfig;
+        this.configuredAccounts = ConfigUtils.getVoiceAccounts();
+        this.specialAccountTypes = ConfigUtils.getSpecialAccountTypes();
+        this.accountTypePositions = ConfigUtils.getAccountTypePositions();
+        this.feeTypeMoneyValue = ConfigUtils.getFeeTypeMoneyValue();
+        this.amountRate = ConfigUtils.getAmountRate();
+        this.callDurationPosition = ConfigUtils.getCallDurationPosition();
     }
     
     @Override
@@ -538,7 +1194,7 @@ public class VoiceCDRProcessor implements Runnable {
             
             for (VoiceCDR record : records) {
                 if (shouldProcessRecord(record)) {
-                    record.setChargeAmount(0.0);
+                    applyVoiceProcessingRules(record);
                 }
             }
             
@@ -549,6 +1205,45 @@ public class VoiceCDRProcessor implements Runnable {
         } catch (Exception e) {
             log.error("Error processing voice CDR file: " + inputFile.getName(), e);
             moveToErrorFolder(e);
+        }
+    }
+    
+    private void applyVoiceProcessingRules(VoiceCDR record) {
+        // Check for special account types first
+        for (int i = 1; i <= 10; i++) {
+            String accountType = record.getAccountType(i);
+            if (accountType != null && specialAccountTypes.containsKey(accountType)) {
+                String feeType = record.getFeeType(i);
+                if (feeType != null && Integer.parseInt(feeType) == feeTypeMoneyValue) {
+                    // Calculate duration reduction for special account
+                    double chargeAmount = record.getChargeAmount(i);
+                    double percentRate = Double.parseDouble(specialAccountTypes.get(accountType));
+                    double durationReduction = (chargeAmount / amountRate) * (percentRate / 100.0);
+                    
+                    // Reduce call duration
+                    long currentDuration = record.getCallDuration();
+                    long newDuration = Math.max(0, currentDuration - (long) durationReduction);
+                    record.setCallDuration(newDuration);
+                    
+                    log.debug("Applied duration reduction {} to special account {} for record: {}", 
+                        durationReduction, accountType, record.getCallId());
+                }
+                
+                // Set charge amount to 0 for special accounts
+                record.setChargeAmount(i, 0.0);
+                return;
+            }
+        }
+        
+        // Apply standard processing for regular accounts
+        for (int i = 1; i <= 10; i++) {
+            String accountType = record.getAccountType(i);
+            if (accountType != null && configuredAccounts.contains(accountType)) {
+                record.setChargeAmount(i, 0.0);
+                log.debug("Applied standard charge reduction for account {} in record: {}", 
+                    accountType, record.getCallId());
+                return;
+            }
         }
     }
     
@@ -610,19 +1305,26 @@ public class VoiceCDRProcessor implements Runnable {
 }
 ```
 
-### 4.3 Data CDR Processor
+### 4.3 Data CDR Processor với White List và Percentage Reduction
 
 ```java
 public class DataCDRProcessor implements Runnable {
     
     private File inputFile;
+    private SystemConfig systemConfig;
     private List<String> configuredAccounts;
+    private List<String> whiteListAccounts;
     private double reductionPercentage;
+    private Map<String, Integer> fieldPositions;
+    private static final Logger log = LoggerFactory.getLogger(DataCDRProcessor.class);
     
-    public DataCDRProcessor(File inputFile) {
+    public DataCDRProcessor(File inputFile, SystemConfig systemConfig) {
         this.inputFile = inputFile;
-        this.configuredAccounts = loadDataAccounts();
-        this.reductionPercentage = loadReductionPercentage();
+        this.systemConfig = systemConfig;
+        this.configuredAccounts = ConfigUtils.getDataAccounts();
+        this.whiteListAccounts = ConfigUtils.getDataWhiteListAccounts();
+        this.reductionPercentage = ConfigUtils.getDataReductionPercentage();
+        this.fieldPositions = ConfigUtils.getDataFieldPositions();
     }
     
     @Override
@@ -633,7 +1335,7 @@ public class DataCDRProcessor implements Runnable {
             
             for (DataCDR record : records) {
                 if (shouldProcessRecord(record)) {
-                    applyReduction(record);
+                    applyDataProcessingRules(record);
                 }
             }
             
@@ -647,9 +1349,52 @@ public class DataCDRProcessor implements Runnable {
         }
     }
     
+    private void applyDataProcessingRules(DataCDR record) {
+        // Check for white list accounts first
+        for (int i = 1; i <= 10; i++) {
+            String accountType = record.getAccountType(i);
+            if (accountType != null && whiteListAccounts.contains(accountType)) {
+                // White list account - no changes
+                log.debug("White list account {} found in record: {} - no changes applied", 
+                    accountType, record.getCallId());
+                return;
+            }
+        }
+        
+        // Check for regular accounts
+        for (int i = 1; i <= 10; i++) {
+            String accountType = record.getAccountType(i);
+            if (accountType != null && configuredAccounts.contains(accountType)) {
+                // Apply percentage reduction
+                applyPercentageReduction(record, i);
+                log.debug("Applied percentage reduction for account {} in record: {}", 
+                    accountType, record.getCallId());
+                return;
+            }
+        }
+    }
+    
+    private void applyPercentageReduction(DataCDR record, int accountIndex) {
+        double multiplier = (100 - reductionPercentage) / 100.0;
+        
+        // Reduce ChargeAmount for the specific account
+        double currentChargeAmount = record.getChargeAmount(accountIndex);
+        record.setChargeAmount(accountIndex, currentChargeAmount * multiplier);
+        
+        // Reduce flux values
+        record.setTotalFlux(record.getTotalFlux() * multiplier);
+        record.setUpFlux(record.getUpFlux() * multiplier);
+        record.setDownFlux(record.getDownFlux() * multiplier);
+        record.setTotalChargeFlux(record.getTotalChargeFlux() * multiplier);
+        
+        log.debug("Applied {}% reduction to record: {} - ChargeAmount: {} -> {}, TotalFlux: {} -> {}", 
+            reductionPercentage, record.getCallId(), currentChargeAmount, 
+            record.getChargeAmount(accountIndex), record.getTotalFlux() / multiplier, record.getTotalFlux());
+    }
+    
     private void moveToErrorFolder(Exception e) {
         try {
-            File errorFolder = new File(systemConfig.getErrorFolder());
+            File errorFolder = new File(systemConfig.getDataErrorFolder());
             if (!errorFolder.exists()) {
                 errorFolder.mkdirs();
             }
@@ -676,7 +1421,7 @@ public class DataCDRProcessor implements Runnable {
     
     private void logDetailedError(File originalFile, File errorFile, Exception e) {
         try {
-            File errorLogFile = new File(systemConfig.getErrorFolder(), "data_error_log.txt");
+            File errorLogFile = new File(systemConfig.getDataErrorFolder(), "data_error_log.txt");
             try (PrintWriter writer = new PrintWriter(new FileWriter(errorLogFile, true))) {
                 writer.println(String.format("[%s] DATA CDR PROCESSING ERROR", 
                     new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date())));
@@ -693,12 +1438,16 @@ public class DataCDRProcessor implements Runnable {
         }
     }
     
-    private void applyReduction(DataCDR record) {
-        double multiplier = (100 - reductionPercentage) / 100.0;
-        
-        record.setTotalFlux(record.getTotalFlux() * multiplier);
-        record.setUpFlux(record.getUpFlux() * multiplier);
-        record.setDownFlux(record.getDownFlux() * multiplier);
+    private boolean shouldProcessRecord(DataCDR record) {
+        // Check if any account type is in configured accounts or white list
+        for (int i = 1; i <= 10; i++) {
+            String accountType = record.getAccountType(i);
+            if (accountType != null && 
+                (configuredAccounts.contains(accountType) || whiteListAccounts.contains(accountType))) {
+                return true;
+            }
+        }
+        return false;
     }
 }
 ```
@@ -1475,10 +2224,14 @@ kill -9 $(pgrep java)
 Hệ thống được thiết kế với kiến trúc Master-Slave linh hoạt kết hợp với High Availability (HA) active-standby, có thể mở rộng và cấu hình dễ dàng. Việc xử lý song song giúp tăng hiệu suất xử lý, đặc biệt quan trọng với khối lượng dữ liệu lớn.
 
 ### 8.1 Ưu Điểm
-- **Kiến trúc scalable**: Master-Slave processing với khả năng mở rộng
+- **Kiến trúc scalable**: Master-Slave processing với khả năng mở rộng cho Voice, Data, và PCRF CDR
 - **High Availability**: Active-standby với Pacemaker cho 99.9% uptime
-- **Cấu hình linh hoạt**: XML và properties configuration
-- **Xử lý song song hiệu quả**: Multi-threaded processing
+- **Cấu hình linh hoạt**: Separate configuration files cho từng loại CDR
+- **Xử lý song song hiệu quả**: Multi-threaded processing với dedicated thread pools
+- **Voice CDR Duration Reduction**: Tính toán giảm thời gian cuộc gọi cho tài khoản đặc biệt
+- **Special Account Processing**: Xử lý riêng cho special accounts với fee type money value
+- **Folder-based Organization**: Tách biệt input/output/backup/error folders cho từng loại CDR
+- **Subfolder Structure Preservation**: Duy trì cấu trúc thư mục con từ input đến output
 - **Backup tự động**: Original files được backup trước khi xử lý
 - **Heartbeat monitoring**: Database-based heartbeat với timeout detection
 - **Automatic failover**: Standby server tự động takeover khi active server fail

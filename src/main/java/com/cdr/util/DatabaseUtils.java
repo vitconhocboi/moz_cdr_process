@@ -46,16 +46,4 @@ public class DatabaseUtils {
             throw new RuntimeException("Database connection failed", e);
         }
     }
-    
-    /**
-     * Test database connection
-     */
-    public static boolean testConnection(DataSource dataSource) {
-        try (var connection = dataSource.getConnection()) {
-            return connection.isValid(5);
-        } catch (Exception e) {
-            log.error("Database connection test failed", e);
-            return false;
-        }
-    }
 }

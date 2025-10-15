@@ -1,6 +1,8 @@
 package com.cdr.util;
 
 import com.cdr.model.SystemConfig;
+import com.cdr.model.VoiceConfig;
+import com.cdr.model.DataConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -8,9 +10,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 
 /**
  * Configuration utility class for loading system configuration
@@ -79,16 +83,14 @@ public class ConfigUtils {
         return config;
     }
     
-    public static List<String> getVoiceAccounts() {
-        Properties props = loadProperties("voice-config.properties");
-        String accounts = props.getProperty("cdr.voice.accounts", "");
-        return Arrays.asList(accounts.split(","));
-    }
-    
     public static List<String> getDataAccounts() {
         Properties props = loadProperties("data-config.properties");
         String accounts = props.getProperty("cdr.data.accounts", "");
         return Arrays.asList(accounts.split(","));
+    }
+    
+    public static Set<String> getDataExceptAccounts() {
+        return getCachedDataConfig().exceptAccounts;
     }
     
     public static List<String> getPcrfAccounts() {
@@ -98,8 +100,7 @@ public class ConfigUtils {
     }
     
     public static double getDataReductionPercentage() {
-        Properties props = loadProperties("data-config.properties");
-        return Double.parseDouble(props.getProperty("cdr.data.reduction.percentage", "50.0"));
+        return getCachedDataConfig().reductionPercentage;
     }
     
     public static double getPcrfReductionPercentage() {
@@ -107,54 +108,122 @@ public class ConfigUtils {
         return Double.parseDouble(props.getProperty("cdr.pcrf.reduction.percentage", "30.0"));
     }
     
-    public static double getVoiceChargeAmount() {
+    /**
+     * Load all voice configuration properties from voice-config.properties
+     */
+    public static VoiceConfig loadVoiceConfig() {
         Properties props = loadProperties("voice-config.properties");
-        return Double.parseDouble(props.getProperty("cdr.voice.charge.amount", "0.0"));
-    }
-    
-    // Voice configuration methods
-    public static int getOcsChargeCount() {
-        Properties props = loadProperties("voice-config.properties");
-        return Integer.parseInt(props.getProperty("ocsChargeCount", "10"));
-    }
-    
-    public static int getSpecialChargeCount() {
-        Properties props = loadProperties("voice-config.properties");
-        return Integer.parseInt(props.getProperty("specialChargeCount", "3"));
-    }
-    
-    public static Map<String, String> getSpecialAccountTypes() {
-        Properties props = loadProperties("voice-config.properties");
-        Map<String, String> specialAccounts = new HashMap<>();
-        int count = getSpecialChargeCount();
+        VoiceConfig config = new VoiceConfig();
         
-        for (int i = 1; i <= count; i++) {
-            String accountType = props.getProperty("specialAccountType" + i);
-            String discountRate = props.getProperty("discountRate" + i);
-            if (accountType != null) {
-                specialAccounts.put(accountType, discountRate != null ? discountRate : "0");
+        // Basic voice configuration
+        config.voiceChargeAmount = Double.parseDouble(props.getProperty("cdr.voice.charge.amount", "0.0"));
+        config.feeTypeMoneyValue = props.getProperty("feeTypeMoneyValue", "");
+        config.amountRate = Double.parseDouble(props.getProperty("amountRate", "0.5"));
+        config.callDurationPosition = Integer.parseInt(props.getProperty("callDurationPosition", "22"));
+        
+        // Basic CDR field positions (callingPartyNumberPosition and startTimePosition are inherited from BaseConfig)
+        config.setCallingPartyNumberPosition(Integer.parseInt(props.getProperty("callingPartyNumberPosition", "4")));
+        config.setStartTimePosition(Integer.parseInt(props.getProperty("startTimePosition", "20")));
+        config.calledPartyNumberPosition = Integer.parseInt(props.getProperty("calledPartyNumberPosition", "5"));
+
+        // Charge configuration
+        config.ocsChargeCount = Integer.parseInt(props.getProperty("ocsChargeCount", "10"));
+        config.specialChargeCount = Integer.parseInt(props.getProperty("specialChargeCount", "0"));
+        
+        // Special account types
+        String accounts = props.getProperty("cdr.voice.special.accounts", "");
+        if (!accounts.isEmpty()) {
+            String[] accountList = accounts.split(",");
+            for (String account : accountList) {
+                account = account.trim();
+                if (!account.isEmpty()) {
+                    config.specialAccountTypes.add(account);
+                }
             }
         }
-        return specialAccounts;
-    }
-    
-    public static Map<String, Integer> getAccountTypePositions() {
-        Properties props = loadProperties("voice-config.properties");
-        Map<String, Integer> positions = new HashMap<>();
-        int count = getOcsChargeCount();
         
-        for (int i = 1; i <= count; i++) {
+        // Account type positions
+        for (int i = 1; i <= config.ocsChargeCount; i++) {
             String accountTypePos = props.getProperty("AccountType" + i);
             String feeTypePos = props.getProperty("FeeType" + i);
             String chargeAmountPos = props.getProperty("ChargeAmount" + i);
             String currentAcctAmountPos = props.getProperty("CurrentAcctAmount" + i);
             
-            if (accountTypePos != null) positions.put("AccountType" + i, Integer.parseInt(accountTypePos));
-            if (feeTypePos != null) positions.put("FeeType" + i, Integer.parseInt(feeTypePos));
-            if (chargeAmountPos != null) positions.put("ChargeAmount" + i, Integer.parseInt(chargeAmountPos));
-            if (currentAcctAmountPos != null) positions.put("CurrentAcctAmount" + i, Integer.parseInt(currentAcctAmountPos));
+            if (accountTypePos != null) config.getAccountTypePositions().put("AccountType" + i, Integer.parseInt(accountTypePos));
+            if (feeTypePos != null) config.getFeeTypePositions().put("FeeType" + i, Integer.parseInt(feeTypePos));
+            if (chargeAmountPos != null) config.getChargeAmountPositions().put("ChargeAmount" + i, Integer.parseInt(chargeAmountPos));
+            if (currentAcctAmountPos != null) config.getCurrentAcctAmountPositions().put("CurrentAcctAmount" + i, Integer.parseInt(currentAcctAmountPos));
         }
-        return positions;
+        
+        return config;
+    }
+    
+    // Cached voice config for performance
+    private static VoiceConfig cachedVoiceConfig = null;
+    
+    private static VoiceConfig getCachedVoiceConfig() {
+        if (cachedVoiceConfig == null) {
+            cachedVoiceConfig = loadVoiceConfig();
+        }
+        return cachedVoiceConfig;
+    }
+    
+    /**
+     * Load all data configuration properties from data-config.properties
+     */
+    public static DataConfig loadDataConfig() {
+        Properties props = loadProperties("data-config.properties");
+        DataConfig config = new DataConfig();
+        
+        // Basic data configuration
+        String exceptAccounts = props.getProperty("cdr.data.except.accounts", "");
+        if (!exceptAccounts.isEmpty()) {
+            String[] accountList = exceptAccounts.split(",");
+            for (String account : accountList) {
+                account = account.trim();
+                if (!account.isEmpty()) {
+                    config.exceptAccounts.add(account);
+                }
+            }
+        }
+        
+        config.reductionPercentage = Double.parseDouble(props.getProperty("cdr.data.reduction.percentage", "50.0"));
+        config.chargeCount = Integer.parseInt(props.getProperty("dataChargeCount", "10"));
+        
+        // Basic CDR field positions (inherited from BaseConfig)
+        config.setStartTimePosition(Integer.parseInt(props.getProperty("dataStartTimePosition", "2")));
+        config.setCallingPartyNumberPosition(Integer.parseInt(props.getProperty("dataCallingPartyNumberPosition", "4")));
+        
+        // Data CDR field positions
+        config.totalFluxPosition = Integer.parseInt(props.getProperty("dataTotalFluxPosition", "16"));
+        config.upFluxPosition = Integer.parseInt(props.getProperty("dataUpFluxPosition", "17"));
+        config.downFluxPosition = Integer.parseInt(props.getProperty("dataDownFluxPosition", "18"));
+        config.totalChargeFluxPosition = Integer.parseInt(props.getProperty("dataTotalChargeFluxPosition", "57"));
+        
+        // Account type and fee positions (for 10 accounts)
+        for (int i = 1; i <= config.chargeCount; i++) {
+            String accountTypePos = props.getProperty("dataAccountType" + i);
+            String feeTypePos = props.getProperty("dataFeeType" + i);
+            String chargeAmountPos = props.getProperty("dataChargeAmount" + i);
+            String currentAcctAmountPos = props.getProperty("dataCurrentAcctAmount" + i);
+            
+            if (accountTypePos != null) config.getAccountTypePositions().put("dataAccountType" + i, Integer.parseInt(accountTypePos));
+            if (feeTypePos != null) config.getFeeTypePositions().put("dataFeeType" + i, Integer.parseInt(feeTypePos));
+            if (chargeAmountPos != null) config.getChargeAmountPositions().put("dataChargeAmount" + i, Integer.parseInt(chargeAmountPos));
+            if (currentAcctAmountPos != null) config.getCurrentAcctAmountPositions().put("dataCurrentAcctAmount" + i, Integer.parseInt(currentAcctAmountPos));
+        }
+        
+        return config;
+    }
+    
+    // Cached data config for performance
+    private static DataConfig cachedDataConfig = null;
+    
+    private static DataConfig getCachedDataConfig() {
+        if (cachedDataConfig == null) {
+            cachedDataConfig = loadDataConfig();
+        }
+        return cachedDataConfig;
     }
     
     // PCRF configuration methods
@@ -183,51 +252,6 @@ public class ConfigUtils {
         return specialAccounts;
     }
     
-    // Data configuration methods
-    public static int getDataChargeCount() {
-        Properties props = loadProperties("data-config.properties");
-        return Integer.parseInt(props.getProperty("dataChargeCount", "5"));
-    }
-    
-    public static int getDataSpecialChargeCount() {
-        Properties props = loadProperties("data-config.properties");
-        return Integer.parseInt(props.getProperty("dataSpecialChargeCount", "3"));
-    }
-    
-    public static Map<String, String> getDataSpecialAccountTypes() {
-        Properties props = loadProperties("data-config.properties");
-        Map<String, String> specialAccounts = new HashMap<>();
-        int count = getDataSpecialChargeCount();
-        
-        for (int i = 1; i <= count; i++) {
-            String accountType = props.getProperty("dataSpecialAccountType" + i);
-            String discountRate = props.getProperty("dataDiscountRate" + i);
-            if (accountType != null) {
-                specialAccounts.put(accountType, discountRate != null ? discountRate : "0");
-            }
-        }
-        return specialAccounts;
-    }
-    
-    public static Map<String, Integer> getDataAccountTypePositions() {
-        Properties props = loadProperties("data-config.properties");
-        Map<String, Integer> positions = new HashMap<>();
-        int count = getDataChargeCount();
-        
-        for (int i = 1; i <= count; i++) {
-            String accountTypePos = props.getProperty("dataAccountType" + i);
-            String feeTypePos = props.getProperty("dataFeeType" + i);
-            String chargeAmountPos = props.getProperty("dataChargeAmount" + i);
-            String currentAcctAmountPos = props.getProperty("dataCurrentAcctAmount" + i);
-            
-            if (accountTypePos != null) positions.put("dataAccountType" + i, Integer.parseInt(accountTypePos));
-            if (feeTypePos != null) positions.put("dataFeeType" + i, Integer.parseInt(feeTypePos));
-            if (chargeAmountPos != null) positions.put("dataChargeAmount" + i, Integer.parseInt(chargeAmountPos));
-            if (currentAcctAmountPos != null) positions.put("dataCurrentAcctAmount" + i, Integer.parseInt(currentAcctAmountPos));
-        }
-        return positions;
-    }
-    
     public static Map<String, Integer> getPcrfAccountTypePositions() {
         Properties props = loadProperties("pcrf-config.properties");
         Map<String, Integer> positions = new HashMap<>();
@@ -247,19 +271,6 @@ public class ConfigUtils {
         return positions;
     }
     
-    // Field position methods
-    public static Map<String, Integer> getDataFieldPositions() {
-        Properties props = loadProperties("data-config.properties");
-        Map<String, Integer> positions = new HashMap<>();
-        
-        positions.put("totalFlux", Integer.parseInt(props.getProperty("dataTotalFluxPosition", "15")));
-        positions.put("upFlux", Integer.parseInt(props.getProperty("dataUpFluxPosition", "16")));
-        positions.put("downFlux", Integer.parseInt(props.getProperty("dataDownFluxPosition", "17")));
-        positions.put("totalChargeFlux", Integer.parseInt(props.getProperty("dataTotalChargeFluxPosition", "18")));
-        
-        return positions;
-    }
-    
     public static Map<String, Integer> getPcrfFieldPositions() {
         Properties props = loadProperties("pcrf-config.properties");
         Map<String, Integer> positions = new HashMap<>();
@@ -270,6 +281,16 @@ public class ConfigUtils {
         positions.put("totalChargeFlux", Integer.parseInt(props.getProperty("pcrfTotalChargeFluxPosition", "18")));
         
         return positions;
+    }
+    
+    public static String getReportFolder() {
+        Properties props = loadProperties();
+        return props.getProperty("cdr.report.folder", "data/reports");
+    }
+    
+    public static int getBatchSize() {
+        Properties props = loadProperties();
+        return Integer.parseInt(props.getProperty("cdr.batch.size", "500"));
     }
     
     private static Properties loadProperties() {

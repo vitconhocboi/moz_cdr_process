@@ -5,46 +5,18 @@ package com.cdr.model;
  */
 public class DataCDR extends CDRRecord {
     
-    private String sessionId;
-    private String imsi;
-    private String msisdn;
     private double totalFlux;
     private double upFlux;
     private double downFlux;
     private double totalChargeFlux;
-    private long sessionDuration;
-    private String apn;
-    private String startTime;
-    private String endTime;
+    
+    // callingNumber, startTime, originalFields are inherited from CDRRecord
     
     public DataCDR() {
         super();
     }
-    
-    public String getSessionId() {
-        return sessionId;
-    }
-    
-    public void setSessionId(String sessionId) {
-        this.sessionId = sessionId;
-    }
-    
-    public String getImsi() {
-        return imsi;
-    }
-    
-    public void setImsi(String imsi) {
-        this.imsi = imsi;
-    }
-    
-    public String getMsisdn() {
-        return msisdn;
-    }
-    
-    public void setMsisdn(String msisdn) {
-        this.msisdn = msisdn;
-    }
-    
+
+
     public double getTotalFlux() {
         return totalFlux;
     }
@@ -77,52 +49,15 @@ public class DataCDR extends CDRRecord {
         this.totalChargeFlux = totalChargeFlux;
     }
     
-    public long getSessionDuration() {
-        return sessionDuration;
-    }
-    
-    public void setSessionDuration(long sessionDuration) {
-        this.sessionDuration = sessionDuration;
-    }
-    
-    public String getApn() {
-        return apn;
-    }
-    
-    public void setApn(String apn) {
-        this.apn = apn;
-    }
-    
-    public String getStartTime() {
-        return startTime;
-    }
-    
-    public void setStartTime(String startTime) {
-        this.startTime = startTime;
-    }
-    
-    public String getEndTime() {
-        return endTime;
-    }
-    
-    public void setEndTime(String endTime) {
-        this.endTime = endTime;
-    }
     
     @Override
     public String toString() {
         return "DataCDR{" +
-                "sessionId='" + sessionId + '\'' +
-                ", imsi='" + imsi + '\'' +
-                ", msisdn='" + msisdn + '\'' +
                 ", totalFlux=" + totalFlux +
                 ", upFlux=" + upFlux +
                 ", downFlux=" + downFlux +
                 ", totalChargeFlux=" + totalChargeFlux +
-                ", sessionDuration=" + sessionDuration +
-                ", apn='" + apn + '\'' +
                 ", startTime='" + startTime + '\'' +
-                ", endTime='" + endTime + '\'' +
                 '}';
     }
 }

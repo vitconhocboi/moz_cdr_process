@@ -38,8 +38,8 @@ public class HeartbeatService {
         // Send heartbeat every 30 seconds
         scheduler.scheduleWithFixedDelay(this::sendHeartbeat, 0, heartbeatInterval, TimeUnit.MILLISECONDS);
         
-        // Check active server every 60 seconds
-        scheduler.scheduleWithFixedDelay(this::checkActiveServer, 60000, 60000, TimeUnit.MILLISECONDS);
+        // Check active server every 600 seconds
+        scheduler.scheduleWithFixedDelay(this::checkActiveServer, 600_000, 600_000, TimeUnit.MILLISECONDS);
         
         log.info("Heartbeat service started for server: {}", serverName);
     }
