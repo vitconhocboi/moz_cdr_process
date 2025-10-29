@@ -23,19 +23,19 @@ import java.util.Set;
 /**
  * Data CDR Processor for processing data session records
  */
-public class DataCDRProcessor implements Runnable {
+public class PCRFCDRProcessor implements Runnable {
 
     private File inputFile;
     private SystemConfig systemConfig;
     private DataCDRReporter reporter;
-    DataConfig dataConfig;
-    private static final Logger log = LoggerFactory.getLogger(DataCDRProcessor.class);
+    DataConfig pcrfConfig;
+    private static final Logger log = LoggerFactory.getLogger(PCRFCDRProcessor.class);
 
-    public DataCDRProcessor(File inputFile, SystemConfig systemConfig) {
+    public PCRFCDRProcessor(File inputFile, SystemConfig systemConfig) {
         this.inputFile = inputFile;
         this.systemConfig = systemConfig;
-        dataConfig = ConfigUtils.loadDataConfig(systemConfig);
-        this.reporter = new DataCDRReporter(systemConfig.getReportFolder(), systemConfig.getDataInputFolder(), inputFile);
+        pcrfConfig = ConfigUtils.loadPcrfConfig(systemConfig);
+        this.reporter = new DataCDRReporter(systemConfig.getReportFolder(), systemConfig.getPcrfInputFolder(), inputFile);
     }
 
     @Override
@@ -71,11 +71,11 @@ public class DataCDRProcessor implements Runnable {
         }
 
         // For all account types, reduce ChargeAmount and add reduced ChargeAmount to CurrentAcctAmount
-        double reductionPercentage = dataConfig.getReductionPercentage();
+        double reductionPercentage = pcrfConfig.getReductionPercentage();
         double multiplier = (100 - reductionPercentage) / 100.0;
         for (int i = 1; i <= 10; i++) {
             String accountType = record.getAccountType(i);
-            if (dataConfig.getExceptAccounts().contains(accountType)) {
+            if (pcrfConfig.getExceptAccounts().contains(accountType)) {
                 double oldChargeAmount = record.getChargeAmount(i);
                 double oldCurrentAcctAmount = record.getCurrentAcctAmount(i);
                 double reducedCharge = oldChargeAmount * multiplier;
@@ -175,6 +175,25 @@ public class DataCDRProcessor implements Runnable {
         return processedBlock;
     }
 
+    private List<DataCDR> parseDataCDR(File file) throws IOException {
+        List<DataCDR> records = new ArrayList<>();
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (!line.trim().isEmpty()) {
+                    DataCDR record = parseDataRecord(line);
+                    if (record != null) {
+                        records.add(record);
+                    }
+                }
+            }
+        }
+
+        log.info("Parsed {} data CDR records from file: {}", records.size(), file.getName());
+        return records;
+    }
+
     private DataCDR parseDataRecord(String line) {
         try {
             String[] fields = line.split("\\|");
@@ -190,12 +209,12 @@ public class DataCDRProcessor implements Runnable {
             record.setOriginalFields(fields.clone());
 
             // Use field positions from configuration
-            int startTimePos = dataConfig.getStartTimePosition();
-            int callingPartyPos = dataConfig.getCallingPartyNumberPosition();
-            int totalFluxPos = dataConfig.getTotalFluxPosition();
-            int upFluxPos = dataConfig.getUpFluxPosition();
-            int downFluxPos = dataConfig.getDownFluxPosition();
-            int totalChargeFluxPos = dataConfig.getTotalChargeFluxPosition();
+            int startTimePos = pcrfConfig.getStartTimePosition();
+            int callingPartyPos = pcrfConfig.getCallingPartyNumberPosition();
+            int totalFluxPos = pcrfConfig.getTotalFluxPosition();
+            int upFluxPos = pcrfConfig.getUpFluxPosition();
+            int downFluxPos = pcrfConfig.getDownFluxPosition();
+            int totalChargeFluxPos = pcrfConfig.getTotalChargeFluxPosition();
 
             record.setStartTime(fields[startTimePos]);
             record.setCallingNumber(fields[callingPartyPos]);
@@ -206,10 +225,10 @@ public class DataCDRProcessor implements Runnable {
 
             // Parse account types using configuration positions
             for (int i = 1; i <= 10; i++) {
-                int accountTypePos = dataConfig.getAccountTypePositions().get("dataAccountType" + i);
-                int feeTypePos = dataConfig.getFeeTypePositions().get("dataFeeType" + i);
-                int chargeAmountPos = dataConfig.getChargeAmountPositions().get("dataChargeAmount" + i);
-                int currentAcctAmountPos = dataConfig.getCurrentAcctAmountPositions().get("dataCurrentAcctAmount" + i);
+                int accountTypePos = pcrfConfig.getAccountTypePositions().get("pcrfAccountType" + i);
+                int feeTypePos = pcrfConfig.getFeeTypePositions().get("pcrfFeeType" + i);
+                int chargeAmountPos = pcrfConfig.getChargeAmountPositions().get("pcrfChargeAmount" + i);
+                int currentAcctAmountPos = pcrfConfig.getCurrentAcctAmountPositions().get("pcrfCurrentAcctAmount" + i);
 
                 if (accountTypePos < fields.length) {
                     record.setAccountType(i, fields[accountTypePos]);
@@ -235,10 +254,10 @@ public class DataCDRProcessor implements Runnable {
 
     private void writeProcessedBlock(List<DataCDR> records, boolean isFirstBlock) throws IOException {
         // Preserve subfolder structure
-        String relativePath = FileUtils.getRelativePath(inputFile, systemConfig.getDataInputFolder());
+        String relativePath = FileUtils.getRelativePath(inputFile, systemConfig.getPcrfBackupFolder());
         String subfolderPath = new File(relativePath).getParent();
 
-        String outputFolder = systemConfig.getDataOutputFolder();
+        String outputFolder = systemConfig.getPcrfOutputFolder();
         if (subfolderPath != null && !subfolderPath.isEmpty()) {
             FileUtils.createDirectoryStructure(outputFolder, subfolderPath);
             outputFolder = new File(outputFolder, subfolderPath).getAbsolutePath();
@@ -262,10 +281,10 @@ public class DataCDRProcessor implements Runnable {
         String[] fields = record.getOriginalFields();
 
         // Update only the fields that were modified during processing
-        int totalFluxPos = dataConfig.getTotalFluxPosition();
-        int upFluxPos = dataConfig.getUpFluxPosition();
-        int downFluxPos = dataConfig.getDownFluxPosition();
-        int totalChargeFluxPos = dataConfig.getTotalChargeFluxPosition();
+        int totalFluxPos = pcrfConfig.getTotalFluxPosition();
+        int upFluxPos = pcrfConfig.getUpFluxPosition();
+        int downFluxPos = pcrfConfig.getDownFluxPosition();
+        int totalChargeFluxPos = pcrfConfig.getTotalChargeFluxPosition();
 
         // Update flux values at their configured positions
         if (totalFluxPos < fields.length) {
@@ -283,10 +302,10 @@ public class DataCDRProcessor implements Runnable {
 
         // Update account information at configured positions
         for (int i = 1; i <= 10; i++) {
-            int accountTypePos = dataConfig.getAccountTypePositions().get("dataAccountType" + i);
-            int feeTypePos = dataConfig.getFeeTypePositions().get("dataFeeType" + i);
-            int chargeAmountPos = dataConfig.getChargeAmountPositions().get("dataChargeAmount" + i);
-            int currentAcctAmountPos = dataConfig.getCurrentAcctAmountPositions().get("dataCurrentAcctAmount" + i);
+            int accountTypePos = pcrfConfig.getAccountTypePositions().get("pcrfAccountType" + i);
+            int feeTypePos = pcrfConfig.getFeeTypePositions().get("pcrfFeeType" + i);
+            int chargeAmountPos = pcrfConfig.getChargeAmountPositions().get("pcrfChargeAmount" + i);
+            int currentAcctAmountPos = pcrfConfig.getCurrentAcctAmountPositions().get("pcrfCurrentAcctAmount" + i);
 
             if (accountTypePos < fields.length) {
                 fields[accountTypePos] = record.getAccountType(i) != null ? record.getAccountType(i) : "0";
@@ -307,10 +326,10 @@ public class DataCDRProcessor implements Runnable {
 
     private void backupOriginalFile() {
         // Preserve subfolder structure for backup
-        String relativePath = FileUtils.getRelativePath(inputFile, systemConfig.getDataInputFolder());
+        String relativePath = FileUtils.getRelativePath(inputFile, systemConfig.getPcrfBackupFolder());
         String subfolderPath = new File(relativePath).getParent();
 
-        String backupFolder = systemConfig.getDataBackupFolder();
+        String backupFolder = systemConfig.getPcrfBackupFolder();
         if (subfolderPath != null && !subfolderPath.isEmpty()) {
             FileUtils.createDirectoryStructure(backupFolder, subfolderPath);
             backupFolder = new File(backupFolder, subfolderPath).getAbsolutePath();
@@ -324,10 +343,10 @@ public class DataCDRProcessor implements Runnable {
     private void moveToErrorFolder(Exception e) {
         try {
             // Preserve subfolder structure for error folder
-            String relativePath = FileUtils.getRelativePath(inputFile, systemConfig.getDataInputFolder());
+            String relativePath = FileUtils.getRelativePath(inputFile, systemConfig.getPcrfInputFolder());
             String subfolderPath = new File(relativePath).getParent();
 
-            String errorFolder = systemConfig.getDataErrorFolder();
+            String errorFolder = systemConfig.getPcrfErrorFolder();
             if (subfolderPath != null && !subfolderPath.isEmpty()) {
                 FileUtils.createDirectoryStructure(errorFolder, subfolderPath);
                 errorFolder = new File(errorFolder, subfolderPath).getAbsolutePath();
@@ -357,7 +376,7 @@ public class DataCDRProcessor implements Runnable {
 
     private void logDetailedError(File originalFile, File errorFile, Exception e) {
         try {
-            File errorLogFile = new File(systemConfig.getDataErrorFolder(), "data_error_log.txt");
+            File errorLogFile = new File(systemConfig.getPcrfErrorFolder(), "data_error_log.txt");
             try (PrintWriter writer = new PrintWriter(new FileWriter(errorLogFile, true))) {
                 writer.println(String.format("[%s] DATA CDR PROCESSING ERROR",
                         new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date())));

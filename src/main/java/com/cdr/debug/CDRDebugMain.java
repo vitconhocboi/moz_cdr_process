@@ -1,6 +1,7 @@
 package com.cdr.debug;
 
 import com.cdr.model.SystemConfig;
+import com.cdr.processor.PCRFCDRProcessor;
 import com.cdr.processor.VoiceCDRProcessor;
 import com.cdr.processor.DataCDRProcessor;
 import com.cdr.util.ConfigUtils;
@@ -102,6 +103,10 @@ public class CDRDebugMain {
                 case "data":
                     DataCDRProcessor dataProcessor = new DataCDRProcessor(file, config);
                     dataProcessor.run();
+                    break;
+                case "pcrf":
+                    PCRFCDRProcessor pcrfProcessor = new PCRFCDRProcessor(file, config);
+                    pcrfProcessor.run();
                     break;
             }
             

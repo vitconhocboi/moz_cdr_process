@@ -1,15 +1,11 @@
 package com.cdr;
 
 import com.cdr.model.SystemConfig;
-import com.cdr.processor.HeartbeatService;
 import com.cdr.processor.MasterController;
 import com.cdr.util.ConfigUtils;
-import com.cdr.util.DatabaseUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.sql.DataSource;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Main application class for CDR Processing System
@@ -18,12 +14,19 @@ public class CDRProcessorMain {
     
     private static final Logger log = LoggerFactory.getLogger(CDRProcessorMain.class);
     private MasterController masterController;
-    private HeartbeatService heartbeatService;
     private SystemConfig systemConfig;
-    private DataSource dataSource;
     private volatile boolean running = true;
     
     public static void main(String[] args) {
+        // Check for help argument
+        if (args.length > 0 && ("--help".equals(args[0]) || "-h".equals(args[0]))) {
+            printUsage();
+            System.exit(0);
+        }
+        
+        // Get configuration file path from arguments
+        String configFile = args.length > 0 ? args[0] : "application.properties";
+        
         CDRProcessorMain app = new CDRProcessorMain();
         
         // Add shutdown hook
@@ -33,28 +36,19 @@ public class CDRProcessorMain {
         }));
         
         try {
-            app.start();
+            app.start(configFile);
         } catch (Exception e) {
             log.error("Failed to start CDR Processor", e);
             System.exit(1);
         }
     }
     
-    public void start() throws Exception {
-        log.info("Starting CDR Processor Application...");
+    public void start(String configFile) throws Exception {
+        log.info("Starting CDR Processor Application with config file: {}", configFile);
         
         // Load configuration
-        systemConfig = ConfigUtils.loadSystemConfig();
-        log.info("Configuration loaded successfully");
-        
-        // Initialize database connection
-        dataSource = DatabaseUtils.createDataSource(systemConfig);
-        log.info("Database connection established");
-        
-        // Initialize heartbeat service
-        heartbeatService = new HeartbeatService(systemConfig, dataSource);
-        heartbeatService.startHeartbeat();
-        log.info("Heartbeat service started");
+        systemConfig = ConfigUtils.loadSystemConfig(configFile);
+        log.info("Configuration loaded successfully from: {}", configFile);
         
         // Initialize master controller
         masterController = new MasterController(systemConfig);
@@ -90,10 +84,22 @@ public class CDRProcessorMain {
             masterController.shutdown();
         }
         
-        if (heartbeatService != null) {
-            heartbeatService.shutdown();
-        }
-        
         log.info("CDR Processor Application shutdown completed");
+    }
+    
+    private static void printUsage() {
+        System.out.println("CDR Processor Application");
+        System.out.println("Usage: java -jar cdr-processor.jar [config-file] [options]");
+        System.out.println();
+        System.out.println("Arguments:");
+        System.out.println("  config-file    Path to the application.properties file (default: application.properties)");
+        System.out.println();
+        System.out.println("Options:");
+        System.out.println("  -h, --help     Show this help message");
+        System.out.println();
+        System.out.println("Examples:");
+        System.out.println("  java -jar cdr-processor.jar");
+        System.out.println("  java -jar cdr-processor.jar /path/to/config.properties");
+        System.out.println("  java -jar cdr-processor.jar --help");
     }
 }

@@ -6,30 +6,26 @@ import java.util.Properties;
  * System configuration class for CDR processing system
  */
 public class SystemConfig {
-    
-    // Folder configurations
-    private String inputFolder;
-    private String outputFolder;
-    private String backupFolder;
-    private String errorFolder;
-    
     // Voice CDR folders
     private String voiceInputFolder;
     private String voiceOutputFolder;
     private String voiceBackupFolder;
     private String voiceErrorFolder;
+    private String voiceConfigPath;
     
     // Data CDR folders
     private String dataInputFolder;
     private String dataOutputFolder;
     private String dataBackupFolder;
     private String dataErrorFolder;
-    
+    private String dataConfigPath;
+
     // PCRF CDR folders
     private String pcrfInputFolder;
     private String pcrfOutputFolder;
     private String pcrfBackupFolder;
     private String pcrfErrorFolder;
+    private String pcrfConfigPath;
     
     // Slave configurations
     private int voiceSlaves;
@@ -38,8 +34,8 @@ public class SystemConfig {
     
     // Processing configurations
     private int batchSize;
-    private int threadPoolSize;
     private long processingInterval;
+    private String reportFolder;
     
     // High availability configurations
     private String serverName;
@@ -65,7 +61,6 @@ public class SystemConfig {
         this.voiceSlaves = 2;
         this.dataSlaves = 2;
         this.batchSize = 1000;
-        this.threadPoolSize = 10;
         this.processingInterval = 60000;
         this.heartbeatInterval = 30000;
         this.heartbeatTimeout = 300000;
@@ -75,40 +70,39 @@ public class SystemConfig {
         this.loggingMaxSize = "100MB";
         this.loggingMaxFiles = 10;
     }
-    
-    // Getters and Setters
-    public String getInputFolder() {
-        return inputFolder;
+
+    public String getReportFolder() {
+        return reportFolder;
     }
-    
-    public void setInputFolder(String inputFolder) {
-        this.inputFolder = inputFolder;
+
+    public void setReportFolder(String reportFolder) {
+        this.reportFolder = reportFolder;
     }
-    
-    public String getOutputFolder() {
-        return outputFolder;
+
+    public String getVoiceConfigPath() {
+        return voiceConfigPath;
     }
-    
-    public void setOutputFolder(String outputFolder) {
-        this.outputFolder = outputFolder;
+
+    public void setVoiceConfigPath(String voiceConfigPath) {
+        this.voiceConfigPath = voiceConfigPath;
     }
-    
-    public String getBackupFolder() {
-        return backupFolder;
+
+    public String getDataConfigPath() {
+        return dataConfigPath;
     }
-    
-    public void setBackupFolder(String backupFolder) {
-        this.backupFolder = backupFolder;
+
+    public void setDataConfigPath(String dataConfigPath) {
+        this.dataConfigPath = dataConfigPath;
     }
-    
-    public String getErrorFolder() {
-        return errorFolder;
+
+    public String getPcrfConfigPath() {
+        return pcrfConfigPath;
     }
-    
-    public void setErrorFolder(String errorFolder) {
-        this.errorFolder = errorFolder;
+
+    public void setPcrfConfigPath(String pcrfConfigPath) {
+        this.pcrfConfigPath = pcrfConfigPath;
     }
-    
+
     public int getVoiceSlaves() {
         return voiceSlaves;
     }
@@ -139,14 +133,6 @@ public class SystemConfig {
     
     public void setBatchSize(int batchSize) {
         this.batchSize = batchSize;
-    }
-    
-    public int getThreadPoolSize() {
-        return threadPoolSize;
-    }
-    
-    public void setThreadPoolSize(int threadPoolSize) {
-        this.threadPoolSize = threadPoolSize;
     }
     
     public long getProcessingInterval() {
